@@ -17,10 +17,12 @@ public class PerfectLink {
     int receiverPort;
     private final ExecutorService executor;
     boolean[][] delivered; // TODO change the data structure for delivered
+    private final Object deliveredLock = new Object(); // Lock object for synchronization
+
     int MAX_MESSAGES = 10000;
     private DatagramSocket socket;
     private final boolean isReceiver;
-    private final int MAX_ACK_WAIT_TIME = 100;
+    private final int MAX_ACK_WAIT_TIME = 500;
 
     public PerfectLink(HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort, int receiverId, int senderId) throws Exception {
         this.idToAddressPort = idToAddressPort;
@@ -29,7 +31,7 @@ public class PerfectLink {
         receiverAddress = idToAddressPort.get(receiverId).getKey();
         receiverPort = idToAddressPort.get(receiverId).getValue();
         isReceiver = (senderId == receiverId);
-        this.executor = Executors.newFixedThreadPool(8); // Limit to 8 threads
+        this.executor = Executors.newFixedThreadPool(7); // Limit to 8 threads
 
         initSocket();
     }
@@ -91,9 +93,9 @@ public class PerfectLink {
                 }
             }
         }
-        if (socket != null && !socket.isClosed()) {
-            socket.close();
-        }
+//        if (socket != null && !socket.isClosed()) {
+//            socket.close();
+//        }
     }
 
     // Method to send multiple messages
@@ -126,10 +128,7 @@ public class PerfectLink {
                     int senderId = byteBuffer.getInt();
                     int messageNumber = byteBuffer.getInt();
 
-                    if (!isDelievred(senderId, messageNumber)) {
-                        System.out.println("d " + senderId + " " + messageNumber);
-                        markDelivered(senderId, messageNumber);
-                    }
+                    markDelivered(senderId, messageNumber);
 
                     sendACK(senderId, messageNumber);
                 });
@@ -177,9 +176,11 @@ public class PerfectLink {
     }
 
     private void markDelivered(int senderId, int messageNumber) {
-        delivered[senderId-1][messageNumber-1] = true;
+        synchronized (deliveredLock) {
+            if (!delivered[senderId - 1][messageNumber - 1]) {
+                System.out.println("d " + senderId + " " + messageNumber);
+                delivered[senderId - 1][messageNumber - 1] = true;
+            }
+        }
     }
-    private boolean isDelievred(int senderId, int messageNumber) {
-        return delivered[senderId-1][messageNumber-1];
-    }
-}
+   }
