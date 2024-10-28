@@ -4,35 +4,30 @@ import java.io.IOException;
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 
-public class PerfectLink {
+public class PerfectLinkSingleThread {
     private final HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort;
     private final int receiverId;
     private final int senderId;
     InetAddress receiverAddress;
     int receiverPort;
-    private final ExecutorService executor;
     boolean[][] delivered; // TODO change the data structure for delivered
-    private final Object deliveredLock = new Object(); // Lock object for synchronization
-
-    int MAX_MESSAGES = 10000; // TODO change
+    int bufferSize = 1000;
+    int MAX_MESSAGES = 10000000; // TODO change
     private DatagramSocket socket;
     private final boolean isReceiver;
     private final int MAX_ACK_WAIT_TIME = 100;
+    LogBuffer logBuffer;
+    int numberOfMessages;
 
-    public PerfectLink(HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort, int receiverId, int senderId) throws Exception {
+    public PerfectLinkSingleThread(HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort, int receiverId, int senderId, String outputPath) throws Exception {
         this.idToAddressPort = idToAddressPort;
         this.receiverId = receiverId;
         this.senderId = senderId;
         receiverAddress = idToAddressPort.get(receiverId).getKey();
         receiverPort = idToAddressPort.get(receiverId).getValue();
         isReceiver = (senderId == receiverId);
-        this.executor = Executors.newFixedThreadPool(7); // Limit to 8 threads
-
+        logBuffer = new LogBuffer(bufferSize, outputPath);
         initSocket();
     }
 
@@ -45,7 +40,6 @@ public class PerfectLink {
 
             if (!isReceiver) {
                 socket.setSoTimeout(MAX_ACK_WAIT_TIME);
-//                Thread.sleep(100); // Give receiver time to start
             }
         } catch (SocketException e) {
             throw new RuntimeException(e);
@@ -63,7 +57,7 @@ public class PerfectLink {
         DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, receiverAddress, receiverPort);
 
         // log the broadcast
-        System.out.println("b " + messageNumber);
+        logBuffer.log("b " + messageNumber);
 
         // Prepare a packet to receive ACK data
         byte[] ackData = new byte[8];
@@ -73,19 +67,22 @@ public class PerfectLink {
         while (true) {
             try {
                 socket.send(sendPacket);
-                System.out.println("ack sent at time:\t\t" + System.nanoTime());
+//                System.out.println("ack sent at time:\t\t" + System.nanoTime());
                 socket.receive(ackPacket); // this is blocking until received
-                System.out.println("ack received at time:\t" + System.nanoTime());
+//                System.out.println("ack received at time:\t" + System.nanoTime());
 
                 // Extract the data (2 integers)
                 ByteBuffer byteBuffer = ByteBuffer.wrap(ackPacket.getData());
                 int senderId = byteBuffer.getInt();
                 int ackNumber = byteBuffer.getInt();
-                System.out.println("Acked " + ackNumber + " from id " + senderId);
+//                if (ackNumber == numberOfMessages) { // TODO change this logic to check if it's the last batch
+//                    logBuffer.close();
+//                }
+//                System.out.println("Acked " + ackNumber + " from id " + senderId);
                 break;
             } catch(java.net.SocketTimeoutException e) {
                 // Timeout occurred, retransmit the message
-                System.out.println("No ACK received. Retransmitting...");
+                System.out.println("No ACK received. Retransmitting... " + senderId + " " + messageNumber);
             } catch(Exception e) {
                 e.printStackTrace();
                 if (socket != null && !socket.isClosed()) {
@@ -100,9 +97,10 @@ public class PerfectLink {
 
     // Method to send multiple messages
     public void sendMessages(int numberOfMessages) {
+        // TODO send 8 at a time
+        this.numberOfMessages = numberOfMessages;
         for (int message = 1; message <= numberOfMessages; message++) {
             final int msg = message; // must be final or effectively final to use in lambda
-//            executor.submit(() -> send(msg));  // Submit each send task to the thread pool
             send(msg);
         }
     }
@@ -117,23 +115,20 @@ public class PerfectLink {
             byte[] receiveData = new byte[8];
             DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
 
-            System.out.println("UDP Receiver is running and waiting for data on " + receiverAddress + ":" + receiverPort);
+//            System.out.println("UDP Receiver is running and waiting for data on " + receiverAddress + ":" + receiverPort);
 
             while (true) {
                 // Receive the packet
                 socket.receive(receivePacket);
 
-                // Submit processing of the received packet to a thread
-//                executor.submit(() -> {
-                    // Extract the data (2 integers)
-                    ByteBuffer byteBuffer = ByteBuffer.wrap(receivePacket.getData());
-                    int senderId = byteBuffer.getInt();
-                    int messageNumber = byteBuffer.getInt();
+                // Extract the data (2 integers)
+                ByteBuffer byteBuffer = ByteBuffer.wrap(receivePacket.getData());
+                int senderId = byteBuffer.getInt();
+                int messageNumber = byteBuffer.getInt();
 
-                    markDelivered(senderId, messageNumber);
+                markDelivered(senderId, messageNumber);
 
-                    sendACK(senderId, messageNumber);
-//                });
+                sendACK(senderId, messageNumber);
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -165,24 +160,10 @@ public class PerfectLink {
         }
     }
 
-    public void shutdown() {
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
+    private void markDelivered(int senderId, int messageNumber) {
+        if (!delivered[senderId - 1][messageNumber - 1]) {
+            logBuffer.log("d " + senderId + " " + messageNumber); // TODO some messages might remain undelivered at the end
+            delivered[senderId - 1][messageNumber - 1] = true;
         }
     }
-
-    private void markDelivered(int senderId, int messageNumber) {
-//        synchronized (deliveredLock) {
-            if (!delivered[senderId - 1][messageNumber - 1]) {
-                System.out.println("d " + senderId + " " + messageNumber);
-                delivered[senderId - 1][messageNumber - 1] = true;
-            }
-//        }
-    }
-   }
+}
