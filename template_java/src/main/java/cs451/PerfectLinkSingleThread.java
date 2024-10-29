@@ -11,8 +11,9 @@ public class PerfectLinkSingleThread {
     private final int senderId;
     InetAddress receiverAddress;
     int receiverPort;
-    boolean[][] delivered; // TODO change the data structure for delivered
-    int bufferSize = 1000;
+//    boolean[][] delivered; // TODO change the data structure for delivered
+    BitSet[] delivered;
+    int bufferSize = 10000;
     int MAX_MESSAGES = 10000000; // TODO change
     private DatagramSocket socket;
     private final boolean isReceiver;
@@ -108,7 +109,11 @@ public class PerfectLinkSingleThread {
     public void receive() {
         System.out.println(idToAddressPort.size());
 
-        delivered = new boolean[idToAddressPort.size()][MAX_MESSAGES];
+//        delivered = new boolean[idToAddressPort.size()][MAX_MESSAGES];
+        delivered = new BitSet[idToAddressPort.size()];
+        for (int i = 0; i < delivered.length; i++) {
+            delivered[i] = new BitSet();
+        }
 
         try {
             // Prepare a packet to receive data
@@ -161,9 +166,9 @@ public class PerfectLinkSingleThread {
     }
 
     private void markDelivered(int senderId, int messageNumber) {
-        if (!delivered[senderId - 1][messageNumber - 1]) {
+        if (!delivered[senderId - 1].get(messageNumber - 1)) {
             logBuffer.log("d " + senderId + " " + messageNumber); // TODO some messages might remain undelivered at the end
-            delivered[senderId - 1][messageNumber - 1] = true;
+            delivered[senderId - 1].set(messageNumber - 1);
         }
     }
 }
