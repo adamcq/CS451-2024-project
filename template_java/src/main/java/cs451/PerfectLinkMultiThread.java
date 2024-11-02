@@ -5,8 +5,10 @@ import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-public class PerfectLinkSingleThread {
+public class PerfectLinkMultiThread {
     private final HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort;
     private final int receiverId;
     private final int senderId;
@@ -23,8 +25,9 @@ public class PerfectLinkSingleThread {
     private final int BATCH_SIZE = 8;
     LogBuffer logBuffer;
     int numberOfMessages;
+    private final ExecutorService threadPool;
 
-    public PerfectLinkSingleThread(HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort, int receiverId, int senderId, String outputPath, int numberOfMessages) throws Exception {
+    public PerfectLinkMultiThread(HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort, int receiverId, int senderId, String outputPath, int numberOfMessages) throws Exception {
         this.idToAddressPort = idToAddressPort;
         this.receiverId = receiverId;
         this.senderId = senderId;
@@ -33,6 +36,9 @@ public class PerfectLinkSingleThread {
         isReceiver = (senderId == receiverId);
         logBuffer = new LogBuffer(LOG_BUFFER_SIZE, outputPath);
         this.numberOfMessages = numberOfMessages;
+        if (isReceiver)
+            delivered = new DeliveredCompressed(idToAddressPort.size(), MAX_WINDOW_SIZE, numberOfMessages);
+        this.threadPool = Executors.newFixedThreadPool(8);
         initSocket();
     }
 
@@ -112,27 +118,25 @@ public class PerfectLinkSingleThread {
             try {
                 assert socket != null;
                 socket.send(sendPacket);
-                for (int messageToSend : batch) {
-                    // log the broadcast
-                    logBuffer.log("b " + messageToSend);
-                }
+                threadPool.submit(() -> {
+                            for (int messageToSend : batch) {
+                                // log the broadcast
+                                logBuffer.log("b " + messageToSend);
+                            }
+                        });
+
                 socket.receive(ackPacket); // this is blocking until received
 
-                // the below only executes if ACK is received TODO do something with the ack info (unnecessary in sequential sending because waiting for ack is blocking right after send..)
-                ByteBuffer ackBuffer = ByteBuffer.wrap(ackPacket.getData(), 0, ackPacket.getLength());
-                int ackSenderId = ackBuffer.getInt();
-                int ackBatchNumber = ackBuffer.getInt();
+                // the below executes only if ACK is received before timeout
+                byte[] data = ackPacket.getData();
+                int length = ackPacket.getLength();
 
-//                // Optimized way to extract the first two integers
-//                byte[] data = ackPacket.getData();
-//                int length = ackPacket.getLength();
-//
-//                // Ensure the length is at least 8 to read two integers
-//                if (length < 8) {
-//                    throw new IllegalArgumentException("Packet is too short to contain two integers.");
-//                }
-//                int ackSenderId = ((data[0] & 0xFF) << 24) | ((data[1] & 0xFF) << 16) | ((data[2] & 0xFF) << 8) | (data[3] & 0xFF);
-//                int ackBatchNumber = ((data[4] & 0xFF) << 24) | ((data[5] & 0xFF) << 16) | ((data[6] & 0xFF) << 8) | (data[7] & 0xFF);
+                // Ensure the length is at least 8 to read two integers
+                if (length < 8) {
+                    throw new IllegalArgumentException("Packet is too short to contain two integers.");
+                }
+                int ackSenderId = ((data[0] & 0xFF) << 24) | ((data[1] & 0xFF) << 16) | ((data[2] & 0xFF) << 8) | (data[3] & 0xFF);
+                int ackBatchNumber = ((data[4] & 0xFF) << 24) | ((data[5] & 0xFF) << 16) | ((data[6] & 0xFF) << 8) | (data[7] & 0xFF);
 
 
                 if (ackBatchNumber == batchNumber) // TODO checking the senderId is pointless
@@ -152,45 +156,34 @@ public class PerfectLinkSingleThread {
                 }
             }
         }
-//        if (socket != null && !socket.isClosed()) {
-//            socket.close();
-//        }
     }
 
     public void handleData(byte[] data, int length) {
+        // Ensure the length is at least 8 to read two integers
+        if (length < 8) {
+            throw new IllegalArgumentException("Packet is too short to contain two integers.");
+        }
 
-        // Extract data from packet
-        ByteBuffer receiveBuffer = ByteBuffer.wrap(data, 0, length);
-        int senderId = receiveBuffer.getInt();
-        int batchNumber = receiveBuffer.getInt();
-        byte[] receivePayloadBytes = new byte[receiveBuffer.remaining()];
-        receiveBuffer.get(receivePayloadBytes);
-        String message = new String(receivePayloadBytes, StandardCharsets.UTF_8);
+        // Extract the first two integers
+        int senderId = ((data[0] & 0xFF) << 24) | ((data[1] & 0xFF) << 16) | ((data[2] & 0xFF) << 8) | (data[3] & 0xFF);
+        int batchNumber = ((data[4] & 0xFF) << 24) | ((data[5] & 0xFF) << 16) | ((data[6] & 0xFF) << 8) | (data[7] & 0xFF);
+
+        // Read the remaining data as a UTF-8 string
+        String message = new String(data, 8, length - 8, StandardCharsets.UTF_8);
 
         // Split the payload by spaces
         String[] parts = message.split("\\s+");
 
         // Parse the remaining integers as messageNumbers
-//        System.out.println(Arrays.toString(parts));
-        List<Integer> messageNumbers = new ArrayList<>();
-        for (int i = 0; i < parts.length; i++) {
-            messageNumbers.add(Integer.parseInt(parts[i].trim()));
+        for (String part : parts) {
+            int messageNumber = Integer.parseInt(part);  // Direct parsing without trim
+            markDelivered(senderId, messageNumber);      // Process each number directly
         }
 
-        for (int messageNumber : messageNumbers) {
-            markDelivered(senderId, messageNumber);
-        }
         sendACK(senderId, batchNumber);
     }
 
     public void receive() {
-//        delivered = new BitSet[idToAddressPort.size()];
-//        for (int i = 0; i < delivered.length; i++) {
-//            delivered[i] = new BitSet();
-//        }
-
-        delivered = new DeliveredCompressed(idToAddressPort.size(), MAX_WINDOW_SIZE, numberOfMessages); // TODO use the MAX_WINDOW_SIZE (if needed)
-
         try {
             // Prepare a packet to receive data
             byte[] receiveData = new byte[UDP_PACKET_SIZE]; // TODO ask if we can assume 1024 Bytes as maximum size of a packet
@@ -241,9 +234,12 @@ public class PerfectLinkSingleThread {
             logBuffer.log("d " + senderId + " " + messageNumber);
             delivered.setDelivered(senderId, messageNumber);
         }
-//        if (!delivered[senderId - 1].get(messageNumber - 1)) {
-//            logBuffer.log("d " + senderId + " " + messageNumber);
-//            delivered[senderId - 1].set(messageNumber - 1);
-//        }
+    }
+
+    public void shutdown() {
+        threadPool.shutdown();
+        if (socket != null && !socket.isClosed()) {
+            socket.close();
+        }
     }
 }
