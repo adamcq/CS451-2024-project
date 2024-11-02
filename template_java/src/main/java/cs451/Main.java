@@ -59,7 +59,7 @@ public class Main {
 
         System.out.println("Shut Down Hook Attached.");
 
-        PerfectLinkSingleThread link = new PerfectLinkSingleThread(idToAddressPort, receiverId, parser.myId(), parser.output());
+        PerfectLinkSingleThread link = new PerfectLinkSingleThread(idToAddressPort, receiverId, parser.myId(), parser.output(), numberOfMessages);
         if (parser.myId() == receiverId) {
             link.receive();
         } else {

@@ -53,8 +53,8 @@ def main():
 
   # check if all output files exist
   for host_id in hosts.keys():
-    # output_file = os.path.join(logdir, f"{host_id}.output")
-    output_file = os.path.join(logdir, f"proc{host_id:02d}.output")
+    output_file = os.path.join(logdir, f"{host_id}.output")
+    # output_file = os.path.join(logdir, f"proc{host_id:02d}.output")
     if host_id == receiver_id:
       receiver_output = output_file
     else:

@@ -12,7 +12,9 @@ public class PerfectLinkSingleThread {
     private final int senderId;
     InetAddress receiverAddress;
     int receiverPort;
-    BitSet[] delivered; // TODO change to sliding window
+//    DeliveredMessages delivered;
+    DeliveredCompressed delivered;
+    int MAX_WINDOW_SIZE = 65536; // 2^16
     private final int LOG_BUFFER_SIZE = 10000;
     private DatagramSocket socket;
     private final boolean isReceiver;
@@ -22,7 +24,7 @@ public class PerfectLinkSingleThread {
     LogBuffer logBuffer;
     int numberOfMessages;
 
-    public PerfectLinkSingleThread(HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort, int receiverId, int senderId, String outputPath) throws Exception {
+    public PerfectLinkSingleThread(HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort, int receiverId, int senderId, String outputPath, int numberOfMessages) throws Exception {
         this.idToAddressPort = idToAddressPort;
         this.receiverId = receiverId;
         this.senderId = senderId;
@@ -30,6 +32,7 @@ public class PerfectLinkSingleThread {
         receiverPort = idToAddressPort.get(receiverId).getValue();
         isReceiver = (senderId == receiverId);
         logBuffer = new LogBuffer(LOG_BUFFER_SIZE, outputPath);
+        this.numberOfMessages = numberOfMessages;
         initSocket();
     }
 
@@ -72,7 +75,7 @@ public class PerfectLinkSingleThread {
     public void send(int batchNumber, int[] batch) { // e.g. [1, 2, 3, 4, 5, 6, 7]
 
         // Convert senderId and messageNumber to a space-separated string format
-        StringBuilder payload = new StringBuilder(); // TODO modify the packet to send integer ID, integer batchNumber and then message as a string - this would lead to faster checking of acks. No need to read the string!!!
+        StringBuilder payload = new StringBuilder(); // TODO ask if it's okay to send integer ID, integer batchNumber and then message as a string - this would lead to faster checking of acks. No need to read the string!!!
 
         // append message numbers to the batch
         for (int messageNumber : batch) {
@@ -181,10 +184,12 @@ public class PerfectLinkSingleThread {
     }
 
     public void receive() {
-        delivered = new BitSet[idToAddressPort.size()];
-        for (int i = 0; i < delivered.length; i++) {
-            delivered[i] = new BitSet();
-        }
+//        delivered = new BitSet[idToAddressPort.size()];
+//        for (int i = 0; i < delivered.length; i++) {
+//            delivered[i] = new BitSet();
+//        }
+
+        delivered = new DeliveredCompressed(idToAddressPort.size(), MAX_WINDOW_SIZE, numberOfMessages); // TODO use the MAX_WINDOW_SIZE (if needed)
 
         try {
             // Prepare a packet to receive data
@@ -232,9 +237,13 @@ public class PerfectLinkSingleThread {
     }
 
     private void markDelivered(int senderId, int messageNumber) {
-        if (!delivered[senderId - 1].get(messageNumber - 1)) {
+        if (!delivered.isDelivered(senderId, messageNumber)) {
             logBuffer.log("d " + senderId + " " + messageNumber);
-            delivered[senderId - 1].set(messageNumber - 1);
+            delivered.setDelivered(senderId, messageNumber);
         }
+//        if (!delivered[senderId - 1].get(messageNumber - 1)) {
+//            logBuffer.log("d " + senderId + " " + messageNumber);
+//            delivered[senderId - 1].set(messageNumber - 1);
+//        }
     }
 }
