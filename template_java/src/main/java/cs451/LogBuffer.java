@@ -4,6 +4,7 @@ import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class LogBuffer {
@@ -31,6 +32,7 @@ public class LogBuffer {
     }
 
     public synchronized void flush() {
+//        System.out.println("Flushing " + buffer.toString());
         if (buffer.isEmpty()) {
             return;
         }
