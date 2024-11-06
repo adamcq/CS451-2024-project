@@ -45,6 +45,9 @@ public class PerfectLinkMultiThread {
         initSocket();
     }
 
+    // TODO try using another socket for sending ACKs on receiver
+    // TODO try the tc.py script with different delay values and different loss probabilities
+    // TODO change the logic for adjusting window size - based on receiver business rather than just packets dropped (e.g. 1024 / number of senders)
     private void initSocket() {
         InetAddress senderAddress = idToAddressPort.get(senderId).getKey();
         int senderPort = idToAddressPort.get(senderId).getValue();
@@ -110,18 +113,21 @@ public class PerfectLinkMultiThread {
             ackedCount += acksReceived;
 //            System.out.println("Batches_size " + batches.size());
 
-            if (ackedCount == 0) // initially wait
-                continue;
-            else if (batches.size() != 0) {
-                windowSize /= 2;
-                windowSize = Math.max(1, windowSize);
-                phase = Phase.CONGESTION_AVOIDANCE;
-            } else {
-                if (phase.equals(Phase.SLOW_START))
-                    windowSize *= 2;
-                else
-                    windowSize += INCREMENT;
-            }
+            windowSize = 300;
+
+            // OLD LOGIC FOR WINDOW SIZE MANAGEMENT
+//            if (ackedCount == 0) // initially wait
+//                continue;
+//            else if (batches.size() != 0) {
+//                windowSize /= 2;
+//                windowSize = Math.max(1, windowSize);
+//                phase = Phase.CONGESTION_AVOIDANCE;
+//            } else {
+//                if (phase.equals(Phase.SLOW_START))
+//                    windowSize *= 2;
+//                else
+//                    windowSize += INCREMENT;
+//            }
         }
 
         // after all was sent
