@@ -186,6 +186,7 @@ public class PerfectLinkMultiThread {
         try {
             assert socket != null;
             socket.send(sendPacket);
+            System.out.println("Sent batch number " + batchNumber + " to " + receiverAddress + ":" + receiverPort);
             threadPool.submit(() -> {
                 for (int messageToSend : batch) {
                     // log the broadcast
@@ -194,6 +195,7 @@ public class PerfectLinkMultiThread {
             });
         } catch (Exception e) {
             e.printStackTrace();
+            System.err.println("Failed to send batch number " + batchNumber + ": " + e.getMessage());
             if (socket != null && !socket.isClosed()) {
                 socket.close();
             }
@@ -224,6 +226,8 @@ public class PerfectLinkMultiThread {
                 int ackSenderId = ((data[0] & 0xFF) << 24) | ((data[1] & 0xFF) << 16) | ((data[2] & 0xFF) << 8) | (data[3] & 0xFF);
                 int ackBatchNumber = ((data[4] & 0xFF) << 24) | ((data[5] & 0xFF) << 16) | ((data[6] & 0xFF) << 8) | (data[7] & 0xFF);
 
+                System.out.println("Received ACK for senderId=" + ackSenderId + ", batchNumber=" + ackBatchNumber);
+
                 // remove ackBatchNumber from the batches queue
                 if (ackSenderId == senderId) { // should be always true TODO remove this if
 //                    System.out.println("setting " + ackBatchNumber);
@@ -235,9 +239,11 @@ public class PerfectLinkMultiThread {
 
             } catch (java.net.SocketTimeoutException e) {
                 // Timeout occurred, stop processing received
+                System.out.println("Timeout while waiting for ACKs. Retrying...");
                 break;
             } catch (Exception e) {
                 e.printStackTrace();
+                System.err.println("Error while waiting for ACKs: " + e.getMessage());
                 if (socket != null && !socket.isClosed()) {
                     socket.close();
                 }
@@ -311,6 +317,7 @@ public class PerfectLinkMultiThread {
         for (String part : parts) {
             int messageNumber = Integer.parseInt(part);  // Direct parsing without trim
             markDelivered(senderId, messageNumber);      // Process each number directly
+            System.out.println("Processing messageNumber=" + messageNumber + " from senderId=" + senderId);
         }
 
         sendACK(senderId, batchNumber);
@@ -324,13 +331,16 @@ public class PerfectLinkMultiThread {
 
             while (true) {
                 // Receive the packet
+                System.out.println("Listening for incoming packets...");
                 socket.receive(receivePacket);
                 handleData(receivePacket.getData(), receivePacket.getLength());
             }
         } catch (Exception e) {
+            System.err.println("Error in receive loop: " + e.getMessage());
             e.printStackTrace();
         } finally {
             if (socket != null && !socket.isClosed()) {
+                System.out.println("Closing socket...");
                 socket.close();
             }
         }
@@ -356,8 +366,10 @@ public class PerfectLinkMultiThread {
         DatagramPacket ackPacket = new DatagramPacket(ackData, ackData.length, senderAddress, senderPort);
 
         try {
+            System.out.println("Sending ACK for senderId=" + senderId + ", batchNumber=" + batchNumber);
             socket.send(ackPacket);
         } catch (IOException e) {
+            System.err.println("Failed to send ACK for batchNumber=" + batchNumber + ": " + e.getMessage());
             throw new RuntimeException(e);
         }
     }
