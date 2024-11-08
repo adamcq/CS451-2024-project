@@ -85,7 +85,7 @@ public class PerfectLinkMultiThread {
         Deque<Integer> batches = new ArrayDeque<>();
         this.acked = new BitSet();
         this.acked.set(0);
-        Phase phase = Phase.SLOW_START;
+//        Phase phase = Phase.SLOW_START;
         int windowSize = 1;
 
         while (ackedCount < numberOfBatches) {
@@ -154,7 +154,7 @@ public class PerfectLinkMultiThread {
     public void sendBatch(int batchNumber, int[] batch) {
 
         // Convert senderId and messageNumber to a space-separated string format
-        StringBuilder payload = new StringBuilder(); // TODO ask if it's okay to send integer ID, integer batchNumber and then message as a string - this would lead to faster checking of acks. No need to read the string!!!
+        StringBuilder payload = new StringBuilder();
 
         // append message numbers to the batch
         for (int messageNumber : batch) {
@@ -167,16 +167,20 @@ public class PerfectLinkMultiThread {
             payload.setLength(payload.length() - 1);
         }
 
-        // payload e.g., "42 43 44 45 46 47 48 49 50"
+        // payload e.g., 1,32,"42 43 44 45 46 47 48 49 50",
         byte[] payloadBytes = payload.toString().getBytes(StandardCharsets.UTF_8);
 
+        // Get the current system time in milliseconds
+        long millis = System.currentTimeMillis();
+
         // Create a ByteBuffer
-        ByteBuffer buffer = ByteBuffer.allocate(8 + payloadBytes.length); // integer, integer, string payload
+        ByteBuffer buffer = ByteBuffer.allocate(8 + payloadBytes.length + 8); // integer, integer, string payload, long time
 
         // Place the payload bytes into the buffer
         buffer.putInt(senderId);
         buffer.putInt(batchNumber);
         buffer.put(payloadBytes);
+        buffer.putLong(millis);
 
         // Create a packet to send data to the receiver's address
         byte[] sendData = buffer.array();
@@ -251,63 +255,39 @@ public class PerfectLinkMultiThread {
         }
     }
 
-    public void sendLoop(DatagramPacket sendPacket, DatagramPacket ackPacket, int[] batch, int batchNumber) {
-        while (true) {
-            try {
-                assert socket != null;
-                socket.send(sendPacket);
-                threadPool.submit(() -> {
-                    for (int messageToSend : batch) {
-                        // log the broadcast
-                        logBuffer.log("b " + messageToSend);
-                    }
-                });
-
-                socket.receive(ackPacket); // this is blocking until received
-
-                // the below executes only if ACK is received before timeout
-                byte[] data = ackPacket.getData();
-                int length = ackPacket.getLength();
-
-                // Ensure the length is at least 8 to read two integers
-                if (length < 8) {
-                    throw new IllegalArgumentException("Packet is too short to contain two integers.");
-                }
-                int ackSenderId = ((data[0] & 0xFF) << 24) | ((data[1] & 0xFF) << 16) | ((data[2] & 0xFF) << 8) | (data[3] & 0xFF);
-                int ackBatchNumber = ((data[4] & 0xFF) << 24) | ((data[5] & 0xFF) << 16) | ((data[6] & 0xFF) << 8) | (data[7] & 0xFF);
-
-
-                if (ackBatchNumber == batchNumber) // TODO checking the senderId is pointless
-                    break; // move on to the next batch
-                else {
-                    System.out.println("The below batch numbers should be the same:");
-                    System.out.println("Batch " + batchNumber + " sent from " + senderId);
-                    System.out.println("Batch " + ackBatchNumber + " ack received for " + ackSenderId);
-                }
-            } catch (java.net.SocketTimeoutException e) {
-                // Timeout occurred, retransmit the message
-                System.out.println("No ACK received. Retransmitting... " + senderId + " batch " + batchNumber);
-            } catch (Exception e) {
-                e.printStackTrace();
-                if (socket != null && !socket.isClosed()) {
-                    socket.close();
-                }
-            }
-        }
-    }
-
     public void handleData(byte[] data, int length) {
         // Ensure the length is at least 8 to read two integers
         if (length < 8) {
             throw new IllegalArgumentException("Packet is too short to contain two integers.");
         }
 
+        long receiveTime = System.currentTimeMillis();
+
         // Extract the first two integers
-        int senderId = ((data[0] & 0xFF) << 24) | ((data[1] & 0xFF) << 16) | ((data[2] & 0xFF) << 8) | (data[3] & 0xFF);
-        int batchNumber = ((data[4] & 0xFF) << 24) | ((data[5] & 0xFF) << 16) | ((data[6] & 0xFF) << 8) | (data[7] & 0xFF);
+        int senderId = ((data[0] & 0xFF) << 24) |
+                        ((data[1] & 0xFF) << 16) |
+                        ((data[2] & 0xFF) << 8) |
+                        (data[3] & 0xFF);
+        int batchNumber = ((data[4] & 0xFF) << 24) |
+                        ((data[5] & 0xFF) << 16) |
+                        ((data[6] & 0xFF) << 8) |
+                        (data[7] & 0xFF);
 
         // Read the remaining data as a UTF-8 string
-        String message = new String(data, 8, length - 8, StandardCharsets.UTF_8);
+        String message = new String(data, 8, length - 16, StandardCharsets.UTF_8);
+
+        // Extract the last 8 bytes as a long (nanoTime)
+        long sendTime = ((long)(data[length - 8] & 0xFF) << 56) |
+                ((long)(data[length - 7] & 0xFF) << 48) |
+                ((long)(data[length - 6] & 0xFF) << 40) |
+                ((long)(data[length - 5] & 0xFF) << 32) |
+                ((long)(data[length - 4] & 0xFF) << 24) |
+                ((long)(data[length - 3] & 0xFF) << 16) |
+                ((long)(data[length - 2] & 0xFF) << 8) |
+                ((long)(data[length - 1] & 0xFF));
+
+        long delay = sendTime - receiveTime;
+        System.out.println("Delay " + delay);
 
         // Split the payload by spaces
         String[] parts = message.split("\\s+");
