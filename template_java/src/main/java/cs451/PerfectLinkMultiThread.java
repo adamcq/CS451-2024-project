@@ -286,7 +286,7 @@ public class PerfectLinkMultiThread {
                 ((long)(data[length - 2] & 0xFF) << 8) |
                 ((long)(data[length - 1] & 0xFF));
 
-        long delay = sendTime - receiveTime;
+        long delay = receiveTime - sendTime;
         System.out.println("Delay " + delay);
 
         // Split the payload by spaces
@@ -297,10 +297,13 @@ public class PerfectLinkMultiThread {
         for (String part : parts) {
             int messageNumber = Integer.parseInt(part);  // Direct parsing without trim
             markDelivered(senderId, messageNumber);      // Process each number directly
-            System.out.println("Processing messageNumber=" + messageNumber + " from senderId=" + senderId);
         }
 
+        long endHandle = System.currentTimeMillis();
+        System.out.println("Data handling time " + (endHandle - receiveTime));
         sendACK(senderId, batchNumber);
+        long endAck = System.currentTimeMillis();
+        System.out.println("Data handling time " + (endAck - endHandle));
     }
 
     public void receive() {
