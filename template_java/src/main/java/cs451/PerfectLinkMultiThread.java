@@ -41,7 +41,7 @@ public class PerfectLinkMultiThread {
         this.numberOfMessages = numberOfMessages;
         if (isReceiver)
             delivered = new DeliveredCompressed(idToAddressPort.size(), MAX_WINDOW_SIZE, numberOfMessages);
-        this.threadPool = Executors.newFixedThreadPool(8);
+        this.threadPool = Executors.newFixedThreadPool(7);
         initSocket();
     }
 
@@ -263,26 +263,26 @@ public class PerfectLinkMultiThread {
 
         // Extract the first two integers
         int senderId = ((data[0] & 0xFF) << 24) |
-                        ((data[1] & 0xFF) << 16) |
-                        ((data[2] & 0xFF) << 8) |
-                        (data[3] & 0xFF);
+                ((data[1] & 0xFF) << 16) |
+                ((data[2] & 0xFF) << 8) |
+                (data[3] & 0xFF);
         int batchNumber = ((data[4] & 0xFF) << 24) |
-                        ((data[5] & 0xFF) << 16) |
-                        ((data[6] & 0xFF) << 8) |
-                        (data[7] & 0xFF);
+                ((data[5] & 0xFF) << 16) |
+                ((data[6] & 0xFF) << 8) |
+                (data[7] & 0xFF);
 
         // Read the remaining data as a UTF-8 string
         String message = new String(data, 8, length - 16, StandardCharsets.UTF_8);
 
         // Extract the last 8 bytes as a long (nanoTime)
-        long sendTime = ((long)(data[length - 8] & 0xFF) << 56) |
-                ((long)(data[length - 7] & 0xFF) << 48) |
-                ((long)(data[length - 6] & 0xFF) << 40) |
-                ((long)(data[length - 5] & 0xFF) << 32) |
-                ((long)(data[length - 4] & 0xFF) << 24) |
-                ((long)(data[length - 3] & 0xFF) << 16) |
-                ((long)(data[length - 2] & 0xFF) << 8) |
-                ((long)(data[length - 1] & 0xFF));
+        long sendTime = ((long) (data[length - 8] & 0xFF) << 56) |
+                ((long) (data[length - 7] & 0xFF) << 48) |
+                ((long) (data[length - 6] & 0xFF) << 40) |
+                ((long) (data[length - 5] & 0xFF) << 32) |
+                ((long) (data[length - 4] & 0xFF) << 24) |
+                ((long) (data[length - 3] & 0xFF) << 16) |
+                ((long) (data[length - 2] & 0xFF) << 8) |
+                ((long) (data[length - 1] & 0xFF));
 
         long delay = receiveTime - sendTime;
 
