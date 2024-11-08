@@ -43,11 +43,22 @@ public class DeliveredCompressed {
         delivered[senderIndex][window].set(idx);
 
         // if the min window is full, remove it and update the min window index
-        if (delivered[senderIndex][minWindowIdx[senderIndex]].get(MAX_WINDOW_SIZE - 1) && delivered[senderIndex][minWindowIdx[senderIndex]].nextClearBit(0) == MAX_WINDOW_SIZE) {
+        if (delivered[senderIndex][minWindowIdx[senderIndex]].get(MAX_WINDOW_SIZE - 1) && delivered[senderIndex][minWindowIdx[senderIndex]].nextClearBit(0) == MAX_WINDOW_SIZE) { // TODO change
             delivered[senderIndex][minWindowIdx[senderIndex]] = null;
             minWindowIdx[senderIndex]++;
             while (delivered[senderIndex][minWindowIdx[senderIndex]] != null && delivered[senderIndex][minWindowIdx[senderIndex]].nextClearBit(0) == MAX_WINDOW_SIZE)
                 minWindowIdx[senderIndex]++;
+//            // start debugging
+//            for (int i = 0; i <= minWindowIdx[senderIndex]; i++) {
+//                if (delivered[senderIndex][i] == null) {
+//                    System.out.print(i + " null ");
+//                }
+//                else {
+//                    System.out.print(i + " " + delivered[senderIndex][i].nextClearBit(0));
+//                }
+//            }
+//            System.out.println();
+//            // end debugging
         }
     }
 
@@ -61,7 +72,8 @@ public class DeliveredCompressed {
 //        System.out.println("debug  numberOfWindows,  MAX_WINDOW_SIZE " + numberOfWindows + " " + MAX_WINDOW_SIZE);
 //        System.out.println("debug0 senderIndex, messageIndex " + senderIndex + " " + messageIndex);
 //        System.out.println("debug1 window, idx " + window + " " + idx);
-
+        if (window < minWindowIdx[senderIndex])
+            return true;
         return delivered[senderIndex][window] != null && delivered[senderIndex][window].get(idx);
     }
 }

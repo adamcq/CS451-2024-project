@@ -15,7 +15,7 @@ public class PerfectLinkMultiThread {
     private final int senderId;
     InetAddress receiverAddress;
     int receiverPort;
-    DeliveredCompressedConcurrent delivered;
+    DeliveredCompressed delivered;
     BitSet acked;
     int MAX_WINDOW_SIZE = 65536; // 2^16
     private final int LOG_BUFFER_SIZE = 10000;
@@ -30,7 +30,9 @@ public class PerfectLinkMultiThread {
     int numbeOfBatches;
     private final ExecutorService threadPool;
     private final LinkedBlockingQueue packetQueue;
-    private final int RECEIVE_QUEUE_SIZE = 100000;
+    private final int RECEIVE_QUEUE_SIZE = 10000;
+    private final int RECEIVER_BUSY_THRESHOLD = 1;
+    private double ALPHA = 0.1;
     enum Phase {SLOW_START, CONGESTION_AVOIDANCE}
 
     public PerfectLinkMultiThread(HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort, int receiverId, int senderId, String outputPath, int numberOfMessages) throws Exception {
@@ -43,8 +45,8 @@ public class PerfectLinkMultiThread {
         logBuffer = new LogBuffer(LOG_BUFFER_SIZE, outputPath);
         this.numberOfMessages = numberOfMessages;
         if (isReceiver)
-            delivered = new DeliveredCompressedConcurrent(idToAddressPort.size(), MAX_WINDOW_SIZE, numberOfMessages);
-        this.threadPool = Executors.newFixedThreadPool(8);
+            delivered = new DeliveredCompressed(idToAddressPort.size(), MAX_WINDOW_SIZE, numberOfMessages);
+        this.threadPool = Executors.newFixedThreadPool(7);
         this.packetQueue = new LinkedBlockingQueue<>(RECEIVE_QUEUE_SIZE); // Adjust size based on expected traffic
         initSocket();
     }
@@ -106,7 +108,7 @@ public class PerfectLinkMultiThread {
 //            System.out.println("Phase is " + phase + " and unacked     " + (numberOfBatches - ackedCount));
 
             generateAndSendBatches(batches);
-            awaitAcks(batches);
+            int queueSize = awaitAcks(batches);
 
             int acksReceived = windowSize - batches.size();
 //            System.out.println("Phase is " + phase + " and received    " + acksReceived +  " acks");
@@ -114,9 +116,10 @@ public class PerfectLinkMultiThread {
             ackedCount += acksReceived;
 //            System.out.println("Batches_size " + batches.size());
 
+            // DYNAMIC WINDOW SIZE
             if (ackedCount == 0) // initially wait
                 continue;
-            else if (batches.size() != 0) {
+            else if (queueSize > RECEIVER_BUSY_THRESHOLD) {
                 windowSize /= 2;
                 windowSize = Math.max(1, windowSize);
                 phase = Phase.CONGESTION_AVOIDANCE;
@@ -198,15 +201,17 @@ public class PerfectLinkMultiThread {
         }
     }
 
-    private void awaitAcks(Deque<Integer> batches) {
+    private int awaitAcks(Deque<Integer> batches) {
         // Prepare a packet to receive ACK data
-        byte[] ackData = new byte[8]; // senderId and batchNumber
+        byte[] ackData = new byte[12]; // senderId and batchNumber
         DatagramPacket ackPacket = new DatagramPacket(ackData, ackData.length);
+        double queueSizeMovingAvg = 0.0;
+        int batchesStart = batches.size();
 
         while (true) {
             try {
                 if (batches.size() == 0)
-                    return;
+                    return (int)queueSizeMovingAvg;
 
                 assert socket != null;
                 socket.receive(ackPacket); // this is blocking until received
@@ -216,11 +221,12 @@ public class PerfectLinkMultiThread {
                 int length = ackPacket.getLength();
 
                 // Ensure the length is at least 8 to read two integers
-                if (length < 8) {
-                    throw new IllegalArgumentException("Packet is too short to contain two integers.");
+                if (length < 12) {
+                    throw new IllegalArgumentException("Packet is too short to contain 3 integers.");
                 }
                 int ackSenderId = ((data[0] & 0xFF) << 24) | ((data[1] & 0xFF) << 16) | ((data[2] & 0xFF) << 8) | (data[3] & 0xFF);
                 int ackBatchNumber = ((data[4] & 0xFF) << 24) | ((data[5] & 0xFF) << 16) | ((data[6] & 0xFF) << 8) | (data[7] & 0xFF);
+                queueSizeMovingAvg = (1-ALPHA) * queueSizeMovingAvg + ALPHA * (((data[8] & 0xFF) << 24) | ((data[9] & 0xFF) << 16) | ((data[10] & 0xFF) << 8) | (data[11] & 0xFF));
 
                 // remove ackBatchNumber from the batches queue
                 if (ackSenderId == senderId) { // should be always true TODO remove this if
@@ -241,6 +247,8 @@ public class PerfectLinkMultiThread {
                 }
             }
         }
+        System.out.println("Left " + (batches.size()) + " unprocessed batches out of " + batchesStart + " q.size = " + queueSizeMovingAvg);
+        return (int) queueSizeMovingAvg;
     }
 
 
@@ -277,7 +285,7 @@ public class PerfectLinkMultiThread {
         while (true) {
             try {
                 DatagramPacket packet = (DatagramPacket) packetQueue.take(); // Take a packet from the queue
-                threadPool.submit(() -> handleData(packet.getData(), packet.getLength()));
+                threadPool.submit(() -> handleData(packet.getData(), packet.getLength(), packetQueue.size()));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
@@ -285,10 +293,11 @@ public class PerfectLinkMultiThread {
         }
     }
 
-    private void handleData(byte[] data, int length) {
+    private void handleData(byte[] data, int length, int queueSize) {
         if (length < 8) {
             throw new IllegalArgumentException("Packet is too short to contain two integers.");
         }
+//        System.out.println("queue size " + queueSize);
 
         int senderId = ((data[0] & 0xFF) << 24) | ((data[1] & 0xFF) << 16) | ((data[2] & 0xFF) << 8) | (data[3] & 0xFF);
         int batchNumber = ((data[4] & 0xFF) << 24) | ((data[5] & 0xFF) << 16) | ((data[6] & 0xFF) << 8) | (data[7] & 0xFF);
@@ -301,16 +310,17 @@ public class PerfectLinkMultiThread {
             int messageNumber = Integer.parseInt(part);
             markDelivered(senderId, messageNumber);
         }
-        sendACK(senderId, batchNumber);
+        sendACK(senderId, batchNumber, queueSize);
     }
 
-    private void sendACK(int senderId, int batchNumber) {
+    private void sendACK(int senderId, int batchNumber, int queueSize) {
         InetAddress senderAddress = idToAddressPort.get(senderId).getKey();
         int senderPort = idToAddressPort.get(senderId).getValue();
 
-        ByteBuffer buffer = ByteBuffer.allocate(8);
+        ByteBuffer buffer = ByteBuffer.allocate(12);
         buffer.putInt(senderId);
         buffer.putInt(batchNumber);
+        buffer.putInt(queueSize);
         byte[] ackData = buffer.array();
 
         DatagramPacket ackPacket = new DatagramPacket(ackData, ackData.length, senderAddress, senderPort);
@@ -323,9 +333,14 @@ public class PerfectLinkMultiThread {
     }
 
     private void markDelivered(int senderId, int messageNumber) {
-        if (!delivered.isDelivered(senderId, messageNumber)) {
-            delivered.setDelivered(senderId, messageNumber);
-            logBuffer.log("d " + senderId + " " + messageNumber);
+        synchronized(delivered) {
+            // code here
+            if (!delivered.isDelivered(senderId, messageNumber)) {
+                delivered.setDelivered(senderId, messageNumber);
+                if (!delivered.isDelivered(senderId, messageNumber))
+                    System.out.println("WTF " + senderId + " " + messageNumber);
+                logBuffer.log("d " + senderId + " " + messageNumber);
+            }
         }
     }
 

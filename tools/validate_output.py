@@ -124,9 +124,9 @@ def main():
         else:
           seen_messages.add((sender_id, message_id))
     if errors:
-      for error_message_id, error_line_number in errors:
+      for error_message_id, error_line_number in reversed(errors):
         print(f"ERROR: Duplicate message found: sender_id={sender_id}, message_id={error_message_id}, line_number={error_line_number}")
-      print(f'receiver {receiver_id} incorrectly logged {line_number} messages.')
+      print(f'receiver {receiver_id} incorrectly logged {len(errors)} out of {line_number} messages.')
     else:
       print(f'receiver {receiver_id} correctly logged {line_number} messages.')
   print()
