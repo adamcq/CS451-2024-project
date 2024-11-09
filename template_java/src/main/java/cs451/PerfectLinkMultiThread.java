@@ -213,7 +213,7 @@ public class PerfectLinkMultiThread {
         byte[] ackData = new byte[20]; // senderId and batchNumber
         DatagramPacket ackPacket = new DatagramPacket(ackData, ackData.length);
 
-        long maxRtt = Math.max(rtt / 2 , 1);
+        long maxRtt = Math.max((long) avgRtt + 1 , 1);
         long minRtt = rtt;
         avgRtt = rtt;
         double alphaRtt = 0.1;
@@ -270,7 +270,7 @@ public class PerfectLinkMultiThread {
                 long currentTime = System.currentTimeMillis();
                 maxRtt = Math.max(currentTime - sendTime, maxRtt);
                 minRtt = Math.min(currentTime - sendTime, minRtt);
-//                avgRtt = (1 - alphaRtt) * avgRtt + alphaRtt * (currentTime - sendTime);
+                avgRtt = (1 - alphaRtt) * avgRtt + alphaRtt * (currentTime - sendTime);
 
             } catch (java.net.SocketTimeoutException e) {
                 // Timeout occurred, stop processing received
