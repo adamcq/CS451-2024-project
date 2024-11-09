@@ -94,6 +94,7 @@ public class PerfectLinkMultiThread {
         // every X batches - if the RTT is increasing over the X batches - shrink the window size by 2
         // if it is the same - increase windowSize by INCREMENT
         while (ackedCount < numberOfBatches) {
+            System.out.println("windowSize " + windowSize);
             windowSize = loadBatches(batches, windowSize); // windowSize can be shrunken in this method if it is the last batch
 
 //            System.out.println("Phase is " + phase + " and window size " + windowSize);
