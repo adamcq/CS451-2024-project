@@ -90,6 +90,7 @@ public class PerfectLinkMultiThread {
         this.acked.set(0);
         Phase phase = Phase.SLOW_START;
         int windowSize = 1;
+        long totalSent = 0;
 
         // TODO
         // every X batches - if the RTT is increasing over the X batches - shrink the window size by 2
@@ -110,12 +111,14 @@ public class PerfectLinkMultiThread {
             }
 
             generateAndSendBatches(batches);
-            int duplicateBatches = awaitAcks(batches);
+            int duplicates = awaitAcks(batches);
+            totalSent += windowSize;
 
             int acksReceived = windowSize - batches.size();
 //            System.out.println("Phase is " + phase + " and received    " + acksReceived +  " acks");
 //            System.out.println();
             ackedCount += acksReceived;
+            System.out.println("Loss = " + (1.0 - ((double)ackedCount) / (double)totalSent));
 //            System.out.println("Batches_size " + batches.size());
 
             // OLD LOGIC FOR WINDOW SIZE MANAGEMENT
