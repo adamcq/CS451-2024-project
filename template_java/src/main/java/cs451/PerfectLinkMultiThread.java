@@ -10,7 +10,6 @@ import java.util.concurrent.Executors;
 
 public class PerfectLinkMultiThread {
     private final HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort;
-    private final int receiverId;
     private final int senderId;
     InetAddress receiverAddress;
     int receiverPort;
@@ -27,12 +26,13 @@ public class PerfectLinkMultiThread {
     LogBuffer logBuffer;
     int numberOfMessages;
     int numbeOfBatches;
+    int MIN_WINDOW_SIZE = 2;
+    int AWAIT_CUT_OFF_THRESHOLD = 1;
     private final ExecutorService threadPool;
     enum Phase {SLOW_START, CONGESTION_AVOIDANCE}
 
     public PerfectLinkMultiThread(HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort, int receiverId, int senderId, String outputPath, int numberOfMessages) throws Exception {
         this.idToAddressPort = idToAddressPort;
-        this.receiverId = receiverId;
         this.senderId = senderId;
         receiverAddress = idToAddressPort.get(receiverId).getKey();
         receiverPort = idToAddressPort.get(receiverId).getValue();
@@ -86,7 +86,7 @@ public class PerfectLinkMultiThread {
         this.acked = new BitSet();
         this.acked.set(0);
         Phase phase = Phase.SLOW_START;
-        int windowSize = 1;
+        int windowSize = MIN_WINDOW_SIZE;
 
         while (ackedCount < numberOfBatches) {
             // concurrent logic
@@ -123,9 +123,9 @@ public class PerfectLinkMultiThread {
             // OLD LOGIC FOR WINDOW SIZE MANAGEMENT
             if (ackedCount == 0) // initially wait
                 continue;
-            else if (batches.size() != 0) {
+            else if (batches.size() > AWAIT_CUT_OFF_THRESHOLD) {
                 windowSize /= 2;
-                windowSize = Math.max(1, windowSize);
+                windowSize = Math.max(MIN_WINDOW_SIZE, windowSize);
                 phase = Phase.CONGESTION_AVOIDANCE;
             } else {
                 if (phase.equals(Phase.SLOW_START))

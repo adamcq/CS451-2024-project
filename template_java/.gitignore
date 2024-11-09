@@ -33,3 +33,5 @@ hs_err_pid*
 perfect
 .idea
 *.iml
+
+DS_Store
