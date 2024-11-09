@@ -228,9 +228,9 @@ public class PerfectLinkMultiThread {
 
         while (true) {
             try {
-                System.out.println(" Awaiting acks left: " + batches.size());
-                if (batches.size() == 0)
-                    return duplicates;
+//                System.out.println(" Awaiting acks left: " + batches.size());
+//                if (batches.size() == 0)
+//                    return duplicates;
 
                 assert socket != null;
                 socket.receive(ackPacket); // this is blocking until received
