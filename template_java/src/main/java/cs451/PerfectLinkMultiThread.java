@@ -118,6 +118,8 @@ public class PerfectLinkMultiThread {
 //            System.out.println("Phase is " + phase + " and received    " + acksReceived +  " acks");
 //            System.out.println();
             ackedCount += acksReceived;
+            if (ackedCount == 0) // initially wait
+                continue;
 
             // compute Loss
             totalSent += windowSize;
@@ -128,9 +130,7 @@ public class PerfectLinkMultiThread {
 //            System.out.println("Batches_size " + batches.size());
 
             // OLD LOGIC FOR WINDOW SIZE MANAGEMENT
-            if (ackedCount == 0) // initially wait
-                continue;
-            else if (windowSize >= MAX_BATCH_WINDOW_SIZE) {
+            if (windowSize >= MAX_BATCH_WINDOW_SIZE) {
 //            else if (duplicateBatches > windowSize || windowSize >= MAX_BATCH_WINDOW_SIZE) {
 //            else if (batches.size() != 0) {
                 windowSize /= 2;
@@ -143,7 +143,8 @@ public class PerfectLinkMultiThread {
                 if (phase.equals(Phase.SLOW_START))
                     windowSize *= 2;
                 else
-                    windowSize += INCREMENT;
+                    windowSize *= 1.5; // AGGRESSIVE
+//                    windowSize += INCREMENT;
             }
         }
 
