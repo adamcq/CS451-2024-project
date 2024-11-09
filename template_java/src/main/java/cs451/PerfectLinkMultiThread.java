@@ -27,7 +27,7 @@ public class PerfectLinkMultiThread {
     private final int UDP_PACKET_SIZE = 1024;
     private final int BATCH_SIZE = 8;
     private final int INCREMENT = 1;
-    private final int MAX_BATCH_WINDOW_SIZE =  128;
+    private int MAX_BATCH_WINDOW_SIZE =  128;
     LogBuffer logBuffer;
     int numberOfMessages;
     int numbeOfBatches;
@@ -46,6 +46,7 @@ public class PerfectLinkMultiThread {
         if (isReceiver)
             delivered = new DeliveredCompressed(idToAddressPort.size(), MAX_WINDOW_SIZE, numberOfMessages);
         this.threadPool = Executors.newFixedThreadPool(7);
+        MAX_BATCH_WINDOW_SIZE = 600 / (idToAddressPort.size() - 1); // maxWindow = 600 / noSenders
         initSocket();
     }
 
@@ -226,6 +227,7 @@ public class PerfectLinkMultiThread {
 
         while (true) {
             try {
+                System.out.println(" Awaiting acks left: " + batches.size());
                 if (batches.size() == 0)
                     return duplicates;
 
@@ -324,8 +326,6 @@ public class PerfectLinkMultiThread {
                 ((long) (data[length - 2] & 0xFF) << 8) |
                 ((long) (data[length - 1] & 0xFF));
 
-        long delay = receiveTime - sendTime;
-
         // Split the payload by spaces
         String[] parts = message.split("\\s+");
 
@@ -336,13 +336,10 @@ public class PerfectLinkMultiThread {
             duplicates += markDelivered(senderId, messageNumber);      // Process each number directly
         }
 
-        long endHandle = System.currentTimeMillis();
         sendACK(senderId, batchNumber, sendTime, duplicates);
         if (duplicates != 0) {
             System.out.println("dplctts " + duplicates + " sender " + senderId + " batch " + batchNumber);
         }
-        long endAck = System.currentTimeMillis();
-//        System.out.println("Delay " + delay + " data handling time " + (endHandle - receiveTime) + " ack time " + (endAck - endHandle));
     }
 
     public void receive() {
@@ -353,7 +350,6 @@ public class PerfectLinkMultiThread {
 
             while (true) {
                 // Receive the packet
-//                System.out.println("Listening for incoming packets...");
                 socket.receive(receivePacket);
                 handleData(receivePacket.getData(), receivePacket.getLength());
             }
@@ -390,7 +386,6 @@ public class PerfectLinkMultiThread {
         DatagramPacket ackPacket = new DatagramPacket(ackData, ackData.length, senderAddress, senderPort);
 
         try {
-//            System.out.println("Sending ACK for senderId=" + senderId + ", batchNumber=" + batchNumber);
             socket.send(ackPacket);
         } catch (IOException e) {
             System.err.println("Failed to send ACK for batchNumber=" + batchNumber + ": " + e.getMessage());
