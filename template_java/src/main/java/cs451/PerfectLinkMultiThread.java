@@ -23,7 +23,7 @@ public class PerfectLinkMultiThread {
     private final int MAX_ACK_WAIT_TIME = 5;
     private long rtt = MAX_ACK_WAIT_TIME;
     double avgRtt;
-    double loss;
+    double loss = -1;
     private final int UDP_PACKET_SIZE = 1024;
     private final int BATCH_SIZE = 8;
     private final int INCREMENT = 1;
@@ -221,6 +221,7 @@ public class PerfectLinkMultiThread {
 
 
         double alphaRtt = 0.1;
+        double alphaLoss = 0.1;
         int initialBatches = batches.size();
 //        socket.getSoTimeout();
         int duplicates = 0;
@@ -289,9 +290,13 @@ public class PerfectLinkMultiThread {
                 }
             }
         }
+        if (loss == -1)
+            loss = Math.sqrt((double)(batches.size()) / initialBatches);
+        else
+            loss = (1 - alphaLoss) * loss + alphaLoss * Math.sqrt((double)(batches.size()) / initialBatches);
         duplicates /= 8;
         rtt = maxRtt;
-        System.out.println("minRtt " + minRtt + " maxRtt " + maxRtt + " avgRtt " + avgRtt + " duplicates " + duplicates + " size " + initialBatches);
+        System.out.println("minRtt " + minRtt + " maxRtt " + maxRtt + " avgRtt " + avgRtt + " duplicates " + duplicates + " size " + initialBatches + " loss " + loss);
         return duplicates;
     }
 
