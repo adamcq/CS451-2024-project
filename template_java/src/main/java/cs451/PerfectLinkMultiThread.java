@@ -26,7 +26,7 @@ public class PerfectLinkMultiThread {
     LogBuffer logBuffer;
     int numberOfMessages;
     int numbeOfBatches;
-    int MIN_WINDOW_SIZE = 2;
+    int MIN_WINDOW_SIZE = 1;
     int AWAIT_CUT_OFF_THRESHOLD = 1;
     private final ExecutorService threadPool;
     enum Phase {SLOW_START, CONGESTION_AVOIDANCE}
@@ -98,13 +98,15 @@ public class PerfectLinkMultiThread {
             // remove received acks from the queue one by one
             // ...
 
+            int batchesBefore = batches.size();
             windowSize = loadBatches(batches, windowSize); // windowSize can be shrunken in this method if it is the last batch
+            int toLog = windowSize - batchesBefore;
 
 //            System.out.println("Phase is " + phase + " and window size " + windowSize);
 //            System.out.println("Phase is " + phase + " and batch size  " + batches.size());
 //            System.out.println("Phase is " + phase + " and unacked     " + (numberOfBatches - ackedCount));
 
-            generateAndSendBatches(batches);
+            generateAndSendBatches(batches, toLog);
             long rtt = awaitAcks(batches);
 
             // update rtt
@@ -142,8 +144,9 @@ public class PerfectLinkMultiThread {
         }
     }
 
-    public void generateAndSendBatches(Deque<Integer> batches) {
+    public void generateAndSendBatches(Deque<Integer> batches, int toLog) {
 //        System.out.println("Sending " + batches.size() + "  batches: " + batches.toString());
+        int remaining = batches.size();
         for (int batchNumber : batches) {
             int currentBatchSize = Math.min(BATCH_SIZE, numberOfMessages - (batchNumber - 1) * BATCH_SIZE);
 
@@ -152,11 +155,13 @@ public class PerfectLinkMultiThread {
             for (int j = 0; j < currentBatchSize; j++) {
                 batch[j] = (batchNumber - 1) * BATCH_SIZE + j + 1;
             }
-            sendBatch(batchNumber, batch);
+
+            sendBatch(batchNumber, batch, remaining <= toLog);
+            remaining--;
         }
     }
 
-    public void sendBatch(int batchNumber, int[] batch) {
+    public void sendBatch(int batchNumber, int[] batch, boolean logBatch) {
 
         // Convert senderId and messageNumber to a space-separated string format
         StringBuilder payload = new StringBuilder();
@@ -196,12 +201,14 @@ public class PerfectLinkMultiThread {
             assert socket != null;
             socket.send(sendPacket);
 //            System.out.println("Sent batch number " + batchNumber + " to " + receiverAddress + ":" + receiverPort);
-            threadPool.submit(() -> {
-                for (int messageToSend : batch) {
-                    // log the broadcast
-                    logBuffer.log("b " + messageToSend);
-                }
-            });
+            if (logBatch) {
+                threadPool.submit(() -> {
+                    for (int messageToSend : batch) {
+                        // log the broadcast
+                        logBuffer.log("b " + messageToSend);
+                    }
+                });
+            }
         } catch (Exception e) {
             e.printStackTrace();
             System.err.println("Failed to send batch number " + batchNumber + ": " + e.getMessage());

@@ -79,32 +79,32 @@ def main():
   print()
 
   # check the correctness of sender output files
-  # print("SENDER FILES CHECK:")
-  # for sender_output in sender_outputs:
-  #   with open(sender_output, 'r') as file:
-  #     seen_messages = set()
-  #     line_number = 0
-  #     min_message, max_message = math.inf, 0
-  #     sender_id = os.path.basename(sender_output).split('.')[0]
-  #     errors = []
-  #     for line in file:
-  #       line_number += 1
-  #       parts = line.split()
-  #       if len(parts) == 2 and parts[0] == 'b':
-  #         message_id = int(parts[1])
-  #         max_message = max(max_message, message_id)
-  #         min_message = min(min_message, message_id)
-  #         if message_id in seen_messages:
-  #           errors.append((message_id, line_number))
-  #         else:
-  #           seen_messages.add(message_id)
-  #     if errors:
-  #       for error_message_id, error_line_number in errors:
-  #         print(f"ERROR: Duplicate message found: sender_id={sender_id}, message_id={error_message_id}, line_number={error_line_number}")
-  #       print(f'sender {sender_id} incorrectly logged {line_number} messages. min: {min_message} max: {max_message}')
-  #     else:
-  #       print(f'sender {sender_id} correctly logged {line_number} messages. min: {min_message} max: {max_message}')
-  # print()
+  print("SENDER FILES CHECK:")
+  for sender_output in sender_outputs:
+    with open(sender_output, 'r') as file:
+      seen_messages = set()
+      line_number = 0
+      min_message, max_message = math.inf, 0
+      sender_id = os.path.basename(sender_output).split('.')[0]
+      errors = []
+      for line in file:
+        line_number += 1
+        parts = line.split()
+        if len(parts) == 2 and parts[0] == 'b':
+          message_id = int(parts[1])
+          max_message = max(max_message, message_id)
+          min_message = min(min_message, message_id)
+          if message_id in seen_messages:
+            errors.append((message_id, line_number))
+          else:
+            seen_messages.add(message_id)
+      if errors:
+        for error_message_id, error_line_number in errors:
+          print(f"ERROR: Duplicate message found: sender_id={sender_id}, message_id={error_message_id}, line_number={error_line_number}")
+        print(f'sender {sender_id} incorrectly logged {line_number} messages. min: {min_message} max: {max_message}')
+      else:
+        print(f'sender {sender_id} correctly logged {line_number} messages. min: {min_message} max: {max_message}')
+  print()
 
   # check correctness of delivered file
   print("RECEIVER FILE CHECK:")
