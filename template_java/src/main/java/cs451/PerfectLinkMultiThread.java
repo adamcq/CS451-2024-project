@@ -120,7 +120,8 @@ public class PerfectLinkMultiThread {
             // OLD LOGIC FOR WINDOW SIZE MANAGEMENT
             if (ackedCount == 0) // initially wait
                 continue;
-            else if (duplicateBatches > windowSize || windowSize >= MAX_BATCH_WINDOW_SIZE) {
+            else if (windowSize >= MAX_BATCH_WINDOW_SIZE) {
+//            else if (duplicateBatches > windowSize || windowSize >= MAX_BATCH_WINDOW_SIZE) {
 //            else if (batches.size() != 0) {
                 windowSize /= 2;
                 windowSize = Math.max(1, windowSize);
@@ -216,7 +217,7 @@ public class PerfectLinkMultiThread {
 
         long maxRtt = Math.max((long) avgRtt + 1 , 1);
         long minRtt = Math.max((long) avgRtt + 1 , 1);
-        
+
 
         double alphaRtt = 0.1;
         int initialBatches = batches.size();
