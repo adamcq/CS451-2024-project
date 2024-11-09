@@ -213,9 +213,10 @@ public class PerfectLinkMultiThread {
         byte[] ackData = new byte[20]; // senderId and batchNumber
         DatagramPacket ackPacket = new DatagramPacket(ackData, ackData.length);
 
-        long maxRtt = Math.max((long) avgRtt + 1 , 1);
-        long minRtt = rtt;
         avgRtt = rtt;
+        long maxRtt = Math.max((long) avgRtt + 1 , 1);
+        long minRtt = Math.max((long) avgRtt + 1 , 1);
+
         double alphaRtt = 0.1;
         int initialBatches = batches.size();
 //        socket.getSoTimeout();
