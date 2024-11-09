@@ -137,6 +137,8 @@ public class PerfectLinkMultiThread {
                 windowSize = Math.max(1, windowSize);
                 phase = Phase.CONGESTION_AVOIDANCE;
                 System.out.println("windowSize " + windowSize);
+                totalSent = 0;
+                totalReceived = 0;
             } else {
                 if (phase.equals(Phase.SLOW_START))
                     windowSize *= 2;
