@@ -61,7 +61,8 @@ public class DeliveredCompressed {
 //        System.out.println("debug  numberOfWindows,  MAX_WINDOW_SIZE " + numberOfWindows + " " + MAX_WINDOW_SIZE);
 //        System.out.println("debug0 senderIndex, messageIndex " + senderIndex + " " + messageIndex);
 //        System.out.println("debug1 window, idx " + window + " " + idx);
-
+        if (window < minWindowIdx[senderIndex]) // TODO verify
+            return true;
         return delivered[senderIndex][window] != null && delivered[senderIndex][window].get(idx);
     }
 }

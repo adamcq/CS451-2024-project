@@ -20,7 +20,10 @@ public class PerfectLinkMultiThread {
     private final int LOG_BUFFER_SIZE = 10000;
     private DatagramSocket socket;
     private final boolean isReceiver;
-    private final int MAX_ACK_WAIT_TIME = 25;
+    private final int MAX_ACK_WAIT_TIME = 5;
+    private long rtt = MAX_ACK_WAIT_TIME;
+    double avgRtt;
+    double loss;
     private final int UDP_PACKET_SIZE = 1024;
     private final int BATCH_SIZE = 8;
     private final int INCREMENT = 1;
@@ -72,8 +75,6 @@ public class PerfectLinkMultiThread {
         }
         return batches.size();
     }
-
-
     public void sendMessages(int numberOfMessages) {
         this.numberOfMessages = numberOfMessages;
         int ackedCount = 0;
@@ -89,15 +90,6 @@ public class PerfectLinkMultiThread {
         int windowSize = 1;
 
         while (ackedCount < numberOfBatches) {
-            // concurrent logic
-            // have a queue batches
-            // awaitAcks directly removes from the queue messages Acked
-            // loadBatches loads the queue with up to windowSize elements from acked, where acked is clear
-            // send the batches
-            // await acks for X miliseconds
-            // remove received acks from the queue one by one
-            // ...
-
             windowSize = loadBatches(batches, windowSize); // windowSize can be shrunken in this method if it is the last batch
 
 //            System.out.println("Phase is " + phase + " and window size " + windowSize);
@@ -106,6 +98,13 @@ public class PerfectLinkMultiThread {
 
             generateAndSendBatches(batches);
             awaitAcks(batches);
+
+            // update RTT
+            try {
+                socket.setSoTimeout((int) rtt);
+            } catch (SocketException e) {
+                throw new RuntimeException(e);
+            }
 
             int acksReceived = windowSize - batches.size();
 //            System.out.println("Phase is " + phase + " and received    " + acksReceived +  " acks");
@@ -116,10 +115,11 @@ public class PerfectLinkMultiThread {
             // OLD LOGIC FOR WINDOW SIZE MANAGEMENT
             if (ackedCount == 0) // initially wait
                 continue;
-            else if (batches.size() != 0) {
+            else if (batches.size() >= windowSize * loss * loss) {
                 windowSize /= 2;
                 windowSize = Math.max(1, windowSize);
                 phase = Phase.CONGESTION_AVOIDANCE;
+                System.out.println("windowSize " + windowSize);
             } else {
                 if (phase.equals(Phase.SLOW_START))
                     windowSize *= 2;
@@ -134,7 +134,6 @@ public class PerfectLinkMultiThread {
             socket.close();
         }
     }
-
     public void generateAndSendBatches(Deque<Integer> batches) {
 //        System.out.println("Sending " + batches.size() + "  batches: " + batches.toString());
         for (int batchNumber : batches) {
@@ -206,13 +205,20 @@ public class PerfectLinkMultiThread {
 
     public void awaitAcks(Deque<Integer> batches) {
         // Prepare a packet to receive ACK data
-        byte[] ackData = new byte[8]; // senderId and batchNumber
+        byte[] ackData = new byte[16]; // senderId and batchNumber
         DatagramPacket ackPacket = new DatagramPacket(ackData, ackData.length);
+
+        long minRtt = rtt;
+        long maxRtt = Math.max((long) avgRtt, 1);
+        avgRtt = rtt;
+        double alphaRtt = 0.1;
+        int initialBatches = batches.size();
+//        socket.getSoTimeout();
 
         while (true) {
             try {
-                if (batches.size() == 0)
-                    return;
+//                if (batches.size() <=  initialBatches * loss * loss)
+//                    return;
 
                 assert socket != null;
                 socket.receive(ackPacket); // this is blocking until received
@@ -227,6 +233,15 @@ public class PerfectLinkMultiThread {
                 }
                 int ackSenderId = ((data[0] & 0xFF) << 24) | ((data[1] & 0xFF) << 16) | ((data[2] & 0xFF) << 8) | (data[3] & 0xFF);
                 int ackBatchNumber = ((data[4] & 0xFF) << 24) | ((data[5] & 0xFF) << 16) | ((data[6] & 0xFF) << 8) | (data[7] & 0xFF);
+                // Extract the last 8 bytes as a long (nanoTime)
+                long sendTime = ((long) (data[length - 8] & 0xFF) << 56) |
+                        ((long) (data[length - 7] & 0xFF) << 48) |
+                        ((long) (data[length - 6] & 0xFF) << 40) |
+                        ((long) (data[length - 5] & 0xFF) << 32) |
+                        ((long) (data[length - 4] & 0xFF) << 24) |
+                        ((long) (data[length - 3] & 0xFF) << 16) |
+                        ((long) (data[length - 2] & 0xFF) << 8) |
+                        ((long) (data[length - 1] & 0xFF));
 
 //                System.out.println("Received ACK for senderId=" + ackSenderId + ", batchNumber=" + ackBatchNumber);
 
@@ -238,6 +253,12 @@ public class PerfectLinkMultiThread {
                 }
                 else
                     System.out.println("ERROR ACK meant for sender " + ackSenderId + " arrived to sender " + senderId);
+
+                // update rtt
+                long currentTime = System.currentTimeMillis();
+                maxRtt = Math.max(currentTime - sendTime, maxRtt);
+                minRtt = Math.min(currentTime - sendTime, minRtt);
+                avgRtt = (1 - alphaRtt) * avgRtt + alphaRtt * (currentTime - sendTime);
 
             } catch (java.net.SocketTimeoutException e) {
                 // Timeout occurred, stop processing received
@@ -251,6 +272,9 @@ public class PerfectLinkMultiThread {
                 }
             }
         }
+        loss = (1 - alphaRtt) * loss + alphaRtt * Math.sqrt((double)batches.size() / initialBatches);
+        rtt = maxRtt;
+        System.out.println("minRtt " + minRtt + " maxRtt " + maxRtt + " avgRtt " + avgRtt + " loss " + loss);
     }
 
     public void handleData(byte[] data, int length) {
@@ -296,7 +320,7 @@ public class PerfectLinkMultiThread {
         }
 
         long endHandle = System.currentTimeMillis();
-        sendACK(senderId, batchNumber);
+        sendACK(senderId, batchNumber, sendTime);
         long endAck = System.currentTimeMillis();
 //        System.out.println("Delay " + delay + " data handling time " + (endHandle - receiveTime) + " ack time " + (endAck - endHandle));
     }
@@ -324,18 +348,19 @@ public class PerfectLinkMultiThread {
         }
     }
 
-    private void sendACK(int senderId, int batchNumber) { // TODO sendACK(int senderId, int batchNumber) - should be enough to identify originality
+    private void sendACK(int senderId, int batchNumber, long sendTime) { // TODO sendACK(int senderId, int batchNumber) - should be enough to identify originality
 
         // get sender's IP and port
         InetAddress senderAddress = idToAddressPort.get(senderId).getKey();
         int senderPort = idToAddressPort.get(senderId).getValue();
 
         // prepare ackData
-        ByteBuffer buffer = ByteBuffer.allocate(8);
+        ByteBuffer buffer = ByteBuffer.allocate(16);
 
         // Put the senderId and batchNumber into the ByteBuffer
         buffer.putInt(senderId);
         buffer.putInt(batchNumber);
+        buffer.putLong(sendTime);
 
         // Get the byte array from the ByteBuffer
         byte[] ackData = buffer.array();
