@@ -118,15 +118,16 @@ public class PerfectLinkMultiThread {
 //            System.out.println("Phase is " + phase + " and received    " + acksReceived +  " acks");
 //            System.out.println();
             ackedCount += acksReceived;
-            if (ackedCount == 0) // initially wait
+            if (ackedCount == 0 && loss == -1) // initially wait
                 continue;
 
             // compute Loss
             totalSent += windowSize;
             totalReceived += duplicates;
             totalReceived += acksReceived;
+            loss = 1.0 - Math.sqrt(((double)totalReceived) / (double)totalSent);
 //            System.out.println("Loss = " + (1.0 - Math.sqrt(((double)ackedCount) / (double)totalSent)) + " acked " + ackedCount + " total " + totalSent);
-            System.out.println("Loss2= " + (1.0 - Math.sqrt(((double)totalReceived) / (double)totalSent)) + " received " + totalReceived + " total " + totalSent);
+            System.out.println("Loss2= " + loss + " received " + totalReceived + " total " + totalSent);
 //            System.out.println("Batches_size " + batches.size());
 
             // OLD LOGIC FOR WINDOW SIZE MANAGEMENT
@@ -307,7 +308,8 @@ public class PerfectLinkMultiThread {
 //        else
 //            loss = (1 - alphaLoss) * loss + alphaLoss * Math.sqrt((double)(batches.size()) / initialBatches);
         duplicates /= 8;
-        rtt = maxRtt;
+//        rtt = maxRtt;
+        rtt = Math.max(1, (long)avgRtt + 1);
         System.out.println("minRtt " + minRtt + " maxRtt " + maxRtt + " avgRtt " + avgRtt + " duplicates " + duplicates + " size " + initialBatches + " loss " + loss);
         return duplicates;
     }
