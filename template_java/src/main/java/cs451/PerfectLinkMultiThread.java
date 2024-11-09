@@ -14,7 +14,6 @@ public class PerfectLinkMultiThread {
     InetAddress receiverAddress;
     int receiverPort;
     DeliveredCompressed delivered;
-    BitSet acked;
     int MAX_WINDOW_SIZE = 65536; // 2^16
     private final int LOG_BUFFER_SIZE = 10000;
     private DatagramSocket socket;
@@ -25,9 +24,10 @@ public class PerfectLinkMultiThread {
     private final int INCREMENT = 1;
     LogBuffer logBuffer;
     int numberOfMessages;
-    int numbeOfBatches;
+    int numberOfBatches;
     int MIN_WINDOW_SIZE = 1;
     int AWAIT_CUT_OFF_THRESHOLD = 1;
+    int toAdd = 1;
     private final ExecutorService threadPool;
     enum Phase {SLOW_START, CONGESTION_AVOIDANCE}
 
@@ -45,9 +45,6 @@ public class PerfectLinkMultiThread {
         initSocket();
     }
 
-    // TODO try using another socket for sending ACKs on receiver
-    // TODO try the tc.py script with different delay values and different loss probabilities
-    // TODO change the logic for adjusting window size - based on receiver business rather than just packets dropped (e.g. 1024 / number of senders)
     private void initSocket() {
         InetAddress senderAddress = idToAddressPort.get(senderId).getKey();
         int senderPort = idToAddressPort.get(senderId).getValue();
@@ -63,12 +60,10 @@ public class PerfectLinkMultiThread {
         }
     }
     private int loadBatches(Deque<Integer> batches, int windowSize) {
-        int toAdd = (batches.size() == 0) ? -1 : batches.peekLast();
         for (int i = batches.size(); i < windowSize; i++) {
-            toAdd = acked.nextClearBit(toAdd+1);
-            if (toAdd > numbeOfBatches)
+            if (toAdd > numberOfBatches)
                 return batches.size(); // end reached
-            batches.add(toAdd);
+            batches.add(toAdd++);
         }
         return batches.size();
     }
@@ -77,16 +72,15 @@ public class PerfectLinkMultiThread {
     public void sendMessages(int numberOfMessages) {
         this.numberOfMessages = numberOfMessages;
         int ackedCount = 0;
+        Deque<Integer> batches = new ArrayDeque<>();
+        Phase phase = Phase.SLOW_START;
+        int windowSize = MIN_WINDOW_SIZE;
+
         int numberOfBatches = numberOfMessages / BATCH_SIZE;
         if (numberOfMessages % BATCH_SIZE != 0)
             numberOfBatches++;
 
-        this.numbeOfBatches = numberOfBatches;
-        Deque<Integer> batches = new ArrayDeque<>();
-        this.acked = new BitSet();
-        this.acked.set(0);
-        Phase phase = Phase.SLOW_START;
-        int windowSize = MIN_WINDOW_SIZE;
+        this.numberOfBatches = numberOfBatches;
 
         while (ackedCount < numberOfBatches) {
             // concurrent logic
@@ -260,7 +254,6 @@ public class PerfectLinkMultiThread {
                 if (ackSenderId == senderId) { // should be always true TODO remove this if
 //                    System.out.println("setting " + ackBatchNumber);
                     batches.remove(ackBatchNumber);
-                    acked.set(ackBatchNumber);
                 }
                 else
                     System.out.println("ERROR ACK meant for sender " + ackSenderId + " arrived to sender " + senderId);
