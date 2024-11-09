@@ -91,6 +91,7 @@ public class PerfectLinkMultiThread {
         Phase phase = Phase.SLOW_START;
         int windowSize = 1;
         long totalSent = 0;
+        long totalReceived = 0;
 
         // TODO
         // every X batches - if the RTT is increasing over the X batches - shrink the window size by 2
@@ -112,13 +113,18 @@ public class PerfectLinkMultiThread {
 
             generateAndSendBatches(batches);
             int duplicates = awaitAcks(batches);
-            totalSent += windowSize;
 
             int acksReceived = windowSize - batches.size();
 //            System.out.println("Phase is " + phase + " and received    " + acksReceived +  " acks");
 //            System.out.println();
             ackedCount += acksReceived;
-            System.out.println("Loss = " + (1.0 - ((double)ackedCount) / (double)totalSent));
+
+            // compute Loss
+            totalSent += windowSize;
+            totalReceived += duplicates;
+            totalReceived += acksReceived;
+            System.out.println("Loss = " + (1.0 - Math.sqrt(((double)ackedCount) / (double)totalSent)) + " acked " + ackedCount + " total " + totalSent);
+            System.out.println("Loss2= " + (1.0 - Math.sqrt(((double)totalReceived) / (double)totalSent)) + " acked " + ackedCount + " total " + totalSent);
 //            System.out.println("Batches_size " + batches.size());
 
             // OLD LOGIC FOR WINDOW SIZE MANAGEMENT
@@ -293,10 +299,10 @@ public class PerfectLinkMultiThread {
                 }
             }
         }
-        if (loss == -1 && batches.size() == initialBatches)
-            loss = Math.sqrt((double)(batches.size()) / initialBatches);
-        else
-            loss = (1 - alphaLoss) * loss + alphaLoss * Math.sqrt((double)(batches.size()) / initialBatches);
+//        if (loss == -1 && batches.size() == initialBatches)
+//            loss = Math.sqrt((double)(batches.size()) / initialBatches);
+//        else
+//            loss = (1 - alphaLoss) * loss + alphaLoss * Math.sqrt((double)(batches.size()) / initialBatches);
         duplicates /= 8;
         rtt = maxRtt;
         System.out.println("minRtt " + minRtt + " maxRtt " + maxRtt + " avgRtt " + avgRtt + " duplicates " + duplicates + " size " + initialBatches + " loss " + loss);
