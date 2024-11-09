@@ -123,8 +123,8 @@ public class PerfectLinkMultiThread {
             totalSent += windowSize;
             totalReceived += duplicates;
             totalReceived += acksReceived;
-            System.out.println("Loss = " + (1.0 - Math.sqrt(((double)ackedCount) / (double)totalSent)) + " acked " + ackedCount + " total " + totalSent);
-            System.out.println("Loss2= " + (1.0 - Math.sqrt(((double)totalReceived) / (double)totalSent)) + " acked " + ackedCount + " total " + totalSent);
+//            System.out.println("Loss = " + (1.0 - Math.sqrt(((double)ackedCount) / (double)totalSent)) + " acked " + ackedCount + " total " + totalSent);
+            System.out.println("Loss2= " + (1.0 - Math.sqrt(((double)totalReceived) / (double)totalSent)) + " received " + totalReceived + " total " + totalSent);
 //            System.out.println("Batches_size " + batches.size());
 
             // OLD LOGIC FOR WINDOW SIZE MANAGEMENT
@@ -137,8 +137,8 @@ public class PerfectLinkMultiThread {
                 windowSize = Math.max(1, windowSize);
                 phase = Phase.CONGESTION_AVOIDANCE;
                 System.out.println("windowSize " + windowSize);
-                totalSent = 0;
-                totalReceived = 0;
+//                totalSent = 0;
+//                totalReceived = 0;
             } else {
                 if (phase.equals(Phase.SLOW_START))
                     windowSize *= 2;
