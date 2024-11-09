@@ -5,8 +5,6 @@ import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 public class PerfectLinkMultiThread {
     private final HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort;
@@ -28,7 +26,6 @@ public class PerfectLinkMultiThread {
     int MIN_WINDOW_SIZE = 1;
     int AWAIT_CUT_OFF_THRESHOLD = 1;
     int toAdd = 1;
-    private final ExecutorService threadPool;
     enum Phase {SLOW_START, CONGESTION_AVOIDANCE}
 
     public PerfectLinkMultiThread(HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort, int receiverId, int senderId, String outputPath, int numberOfMessages) throws Exception {
@@ -37,11 +34,11 @@ public class PerfectLinkMultiThread {
         receiverAddress = idToAddressPort.get(receiverId).getKey();
         receiverPort = idToAddressPort.get(receiverId).getValue();
         isReceiver = (senderId == receiverId);
-        logBuffer = new LogBuffer(LOG_BUFFER_SIZE, outputPath);
         this.numberOfMessages = numberOfMessages;
-        if (isReceiver)
+        if (isReceiver) {
             delivered = new DeliveredCompressed(idToAddressPort.size(), MAX_WINDOW_SIZE, numberOfMessages);
-        this.threadPool = Executors.newFixedThreadPool(7);
+        }
+        logBuffer = new LogBuffer(LOG_BUFFER_SIZE, outputPath);
         initSocket();
     }
 
@@ -196,12 +193,10 @@ public class PerfectLinkMultiThread {
             socket.send(sendPacket);
 //            System.out.println("Sent batch number " + batchNumber + " to " + receiverAddress + ":" + receiverPort);
             if (logBatch) {
-                threadPool.submit(() -> {
-                    for (int messageToSend : batch) {
-                        // log the broadcast
-                        logBuffer.log("b " + messageToSend);
-                    }
-                });
+                for (int messageToSend : batch) {
+                    // log the broadcast
+                    logBuffer.log("b " + messageToSend);
+                }
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -370,13 +365,6 @@ public class PerfectLinkMultiThread {
         if (!delivered.isDelivered(senderId, messageNumber)) {
             logBuffer.log("d " + senderId + " " + messageNumber);
             delivered.setDelivered(senderId, messageNumber);
-        }
-    }
-
-    public void shutdown() {
-        threadPool.shutdown();
-        if (socket != null && !socket.isClosed()) {
-            socket.close();
         }
     }
 }

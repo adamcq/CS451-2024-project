@@ -66,7 +66,7 @@ public class Main {
             link.sendMessages(numberOfMessages);
         }
 
-        link.shutdown(); // only when using threads in the link
+//        link.shutdown(); // only when using threads in the link
         System.exit(0);
 
         // After a process finishes broadcasting,
