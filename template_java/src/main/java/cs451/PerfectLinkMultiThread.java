@@ -290,7 +290,7 @@ public class PerfectLinkMultiThread {
                 }
             }
         }
-        if (loss == -1)
+        if (loss == -1 && batches.size() == initialBatches)
             loss = Math.sqrt((double)(batches.size()) / initialBatches);
         else
             loss = (1 - alphaLoss) * loss + alphaLoss * Math.sqrt((double)(batches.size()) / initialBatches);
