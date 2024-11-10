@@ -87,17 +87,12 @@ public class PerfectLinkMultiThread {
             // send the batches
             // await acks for X miliseconds
             // remove received acks from the queue one by one
-            // ...
 
             int batchesBefore = batches.size();
             windowSize = loadBatches(batches, windowSize); // windowSize can be shrunken in this method if it is the last batch
             int toLog = windowSize - batchesBefore;
 
-//            System.out.println("Phase is " + phase + " and window size " + windowSize);
-//            System.out.println("Phase is " + phase + " and batch size  " + batches.size());
-//            System.out.println("Phase is " + phase + " and unacked     " + (numberOfBatches - ackedCount));
-
-            generateAndSendBatches(batches, toLog);
+            generateAndSendBatches(batches, toLog); // toLog used for logging
             long rtt = awaitAcks(batches);
 
             // update rtt
@@ -108,12 +103,9 @@ public class PerfectLinkMultiThread {
             }
 
             int acksReceived = windowSize - batches.size();
-//            System.out.println("Phase is " + phase + " and received    " + acksReceived +  " acks");
-//            System.out.println();
             ackedCount += acksReceived;
-//            System.out.println("Batches_size " + batches.size());
 
-            // OLD LOGIC FOR WINDOW SIZE MANAGEMENT
+            // LOGIC FOR WINDOW SIZE MANAGEMENT IN PERFECT NETWORK
             if (ackedCount == 0) // initially wait
                 continue;
             else if (batches.size() > AWAIT_CUT_OFF_THRESHOLD) {
@@ -136,7 +128,6 @@ public class PerfectLinkMultiThread {
     }
 
     public void generateAndSendBatches(Deque<Integer> batches, int toLog) {
-//        System.out.println("Sending " + batches.size() + "  batches: " + batches.toString());
         int remaining = batches.size();
         for (int batchNumber : batches) {
             int currentBatchSize = Math.min(BATCH_SIZE, numberOfMessages - (batchNumber - 1) * BATCH_SIZE);
@@ -191,7 +182,6 @@ public class PerfectLinkMultiThread {
         try {
             assert socket != null;
             socket.send(sendPacket);
-//            System.out.println("Sent batch number " + batchNumber + " to " + receiverAddress + ":" + receiverPort);
             if (logBatch) {
                 for (int messageToSend : batch) {
                     // log the broadcast
@@ -243,11 +233,8 @@ public class PerfectLinkMultiThread {
                 rtt = Math.max(rtt, System.currentTimeMillis() - sendTime);
 //                System.out.println("rtt " + rtt);
 
-//                System.out.println("Received ACK for senderId=" + ackSenderId + ", batchNumber=" + ackBatchNumber);
-
                 // remove ackBatchNumber from the batches queue
                 if (ackSenderId == senderId) { // should be always true TODO remove this if
-//                    System.out.println("setting " + ackBatchNumber);
                     batches.remove(ackBatchNumber);
                 }
                 else
@@ -255,7 +242,6 @@ public class PerfectLinkMultiThread {
 
             } catch (java.net.SocketTimeoutException e) {
                 // Timeout occurred, stop processing received
-//                System.out.println("Timeout while waiting for ACKs. Retrying...");
                 break;
             } catch (Exception e) {
                 e.printStackTrace();
@@ -317,7 +303,6 @@ public class PerfectLinkMultiThread {
 
             while (true) {
                 // Receive the packet
-//                System.out.println("Listening for incoming packets...");
                 socket.receive(receivePacket);
                 handleData(receivePacket.getData(), receivePacket.getLength());
             }
@@ -353,7 +338,6 @@ public class PerfectLinkMultiThread {
         DatagramPacket ackPacket = new DatagramPacket(ackData, ackData.length, senderAddress, senderPort);
 
         try {
-//            System.out.println("Sending ACK for senderId=" + senderId + ", batchNumber=" + batchNumber);
             socket.send(ackPacket);
         } catch (IOException e) {
             System.err.println("Failed to send ACK for batchNumber=" + batchNumber + ": " + e.getMessage());
