@@ -16,7 +16,7 @@ public class PerfectLinkMultiThread {
     private final int LOG_BUFFER_SIZE = 10000;
     private DatagramSocket socket;
     private final boolean isReceiver;
-    private final int MAX_ACK_WAIT_TIME = 25;
+    private final int MAX_ACK_WAIT_TIME = 20;
     private final int UDP_PACKET_SIZE = 1024;
     private final int BATCH_SIZE = 8;
     private final int INCREMENT = 1;
