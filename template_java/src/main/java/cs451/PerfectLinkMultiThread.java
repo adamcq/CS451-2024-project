@@ -97,7 +97,7 @@ public class PerfectLinkMultiThread {
 
             // update rtt
             try {
-                socket.setSoTimeout((int)rtt);
+                socket.setSoTimeout(Math.min(MAX_ACK_WAIT_TIME, (int)rtt));
             } catch (SocketException e) {
                 throw new RuntimeException(e);
             }
