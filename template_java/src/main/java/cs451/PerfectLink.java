@@ -6,7 +6,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
-public class PerfectLinkMultiThread {
+public class PerfectLink {
     private final HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort;
     private final int senderId;
     InetAddress receiverAddress;
@@ -28,7 +28,7 @@ public class PerfectLinkMultiThread {
     int toAdd = 1;
     enum Phase {SLOW_START, CONGESTION_AVOIDANCE}
 
-    public PerfectLinkMultiThread(HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort, int receiverId, int senderId, String outputPath, int numberOfMessages) throws Exception {
+    public PerfectLink(HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort, int receiverId, int senderId, String outputPath, int numberOfMessages) throws Exception {
         this.idToAddressPort = idToAddressPort;
         this.senderId = senderId;
         receiverAddress = idToAddressPort.get(receiverId).getKey();
@@ -97,7 +97,7 @@ public class PerfectLinkMultiThread {
 
             // update rtt
             try {
-                socket.setSoTimeout(Math.min(MAX_ACK_WAIT_TIME, (int)rtt));
+                socket.setSoTimeout(Math.min(MAX_ACK_WAIT_TIME, (int)rtt)); // TODO the min() was added after M1 submission
             } catch (SocketException e) {
                 throw new RuntimeException(e);
             }
