@@ -20,3 +20,5 @@ Interface 2 FIFO-order uniform reliable broadcast
         FRB5: FIFO delivery: If some process broadcasts message m1 before it broadcasts message m2, then
         no correct process delivers m2 unless it has already delivered m1.
 **/
+
+// TODO close sockets with shutDownHook (perhaps in PerfectLink class
