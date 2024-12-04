@@ -10,8 +10,7 @@ import java.util.HashMap;
 public class PerfectReceiver {
     private final HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort;
     private DatagramSocket socket;
-    private final DeliveredCompressed delivered;
-    int MAX_WINDOW_SIZE = 65536; // 2^16
+    private final MemoryFriendlyBitSet delivered;
     private LogBuffer logBuffer;
     private int UDP_PACKET_SIZE = 1024;
 
@@ -22,7 +21,7 @@ public class PerfectReceiver {
                            String outputPath,
                            DatagramSocket socket) {
         this.idToAddressPort = idToAddressPort;
-        this.delivered = new DeliveredCompressed(idToAddressPort.size(), MAX_WINDOW_SIZE, numberOfMessages);
+        this.delivered = new MemoryFriendlyBitSet(idToAddressPort.size(), numberOfMessages);
 
         // init log buffer
         try {
@@ -131,9 +130,9 @@ public class PerfectReceiver {
     }
 
     private void markDelivered(int senderId, int messageNumber) {
-        if (!delivered.isDelivered(senderId, messageNumber)) {
+        if (!delivered.isSet(senderId, messageNumber)) {
             logBuffer.log("d " + senderId + " " + messageNumber);
-            delivered.setDelivered(senderId, messageNumber);
+            delivered.set(senderId, messageNumber);
         }
     }
 }

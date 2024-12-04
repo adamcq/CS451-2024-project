@@ -105,8 +105,8 @@ public class Main {
         }
 
         BEB bestEffortBroadcast = new BEB(idToAddressPort, parser.myId(), parser.output(), numberOfMessages);
-        new Thread(bestEffortBroadcast::receive).start();
-        new Thread(bestEffortBroadcast::broadcast).start();
+//        new Thread(bestEffortBroadcast::receive).start();
+//        new Thread(bestEffortBroadcast::broadcast).start();
 
 //        link.shutdown(); // only when using threads in the link
 //        System.exit(0);

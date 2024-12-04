@@ -1,14 +1,14 @@
 package cs451;
 
-import javax.print.attribute.IntegerSyntax;
-import javax.xml.crypto.Data;
 import java.io.IOException;
 import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class BEB {
@@ -25,29 +25,32 @@ public class BEB {
     int numberOfBatches;
     int MIN_WINDOW_SIZE = 1;
     private final int AWAIT_CUT_OFF_THRESHOLD = 1;
-    private int[] toAdd;
+    private int toAdd;
     private final int BATCH_SIZE = 8;
     private final int INCREMENT = 1;
     int MAX_ACK_WAIT_TIME = 200;
     private LogBuffer logBuffer;
     DatagramSocket socket;
-    DatagramSocket broadcastSocket;
     enum Phase {SLOW_START, CONGESTION_AVOIDANCE}
     ReentrantLock logMutex;
 
     // PERFECT RECEIVER ARGS
-    private final DeliveredCompressed delivered;
-    int MAX_WINDOW_SIZE = 65536; // 2^16
-    private int UDP_PACKET_SIZE = 1024;
+    ConcurrentHashMap<Long, MessageAcker> toBroadcast; // (senderId, messageId) message hash to (Message, ackedSet)
+    private final MemoryFriendlyBitSet urbDelivered;
+    private int UDP_PACKET_SIZE = 512;
+    private final int numberOfHosts;
+//    private long rtt = MAX_ACK_WAIT_TIME;
+    private AtomicLong rtt = new AtomicLong(MAX_ACK_WAIT_TIME);
+    AtomicInteger ownMessagesDelivered;
 
     public BEB(HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort, int processId, String outputPath, int numberOfMessages) {
         this.numberOfMessages = numberOfMessages;
         this.outputPath = outputPath;
         this.processId = processId;
         this.idToAddressPort = idToAddressPort;
-//        executor = Executors.newFixedThreadPool(2);
+        this.numberOfHosts = idToAddressPort.size();
 
-        this.delivered = new DeliveredCompressed(idToAddressPort.size(), MAX_WINDOW_SIZE, numberOfMessages);
+        this.urbDelivered = new MemoryFriendlyBitSet(this.numberOfHosts, numberOfMessages);;
 
         // init log buffer
         try {
@@ -61,53 +64,117 @@ public class BEB {
         int broadcasterPort = idToAddressPort.get(processId).getValue();
 
         try {
-            socket = new DatagramSocket(null); // this works for both sender and receiver, because we put senderId == receiverId for receiver in Main
-            socket.setReuseAddress(true); // set before bind
-            socket.bind(new InetSocketAddress(broadcasterAddress, broadcasterPort));
-            System.out.println("INFOOOO " + socket.getLocalAddress() + " port " + socket.getLocalPort() + " initial timeout " + socket.getSoTimeout() + " SO_REUSEADDR = " + socket.getReuseAddress());
+            socket = new DatagramSocket(broadcasterPort, broadcasterAddress); // this works for both sender and receiver, because we put senderId == receiverId for receiver in Main
         } catch (SocketException e) {
-            System.err.println("Creating receiver socket failed. Socket is USED!!!");
-            System.err.println(e.getMessage());
+            System.err.println("Creating receiver socket failed. Socket is USED!!!\n" + e.getMessage());
             throw new RuntimeException(e);
         }
-
-        try {
-            broadcastSocket = new DatagramSocket(null);
-            broadcastSocket.setReuseAddress(true); // set before bind
-            broadcastSocket.bind(new InetSocketAddress(broadcasterAddress, broadcasterPort));
-            broadcastSocket.setSoTimeout(MAX_ACK_WAIT_TIME); // TODO change to smaller value
-        } catch (SocketException e) {
-            System.err.println("Creating broadcast socket failed.");
-            System.err.println(e.getMessage());
-            throw new RuntimeException(e);
-        }
-
 
         // add socket shutdown hook
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("Inside Socket Shutdown Hook");
             if (socket != null && !socket.isClosed())
                 socket.close();
-            if (broadcastSocket != null && !broadcastSocket.isClosed())
-                broadcastSocket.close();
         }));
 
         // log Mutex
         logMutex = new ReentrantLock();
+
+        // Messages to broadcast
+        this.toBroadcast = new ConcurrentHashMap<>();
+        // start receiver
+        Thread receiverThread = new Thread(this::receive, "ReceiverThread");
+        receiverThread.start();
+
+        // start broadcast
+        Thread broadcastThread = new Thread(this::broadcast, "BroadcastThread");
+        broadcastThread.start();
+    }
+
+
+    /**
+     * @param lastCreated the Batch Number of the last created Batch
+     * @return new Message
+     */
+    private Message createMessage(int lastCreated) {
+        int[] data = new int[Math.min(8, numberOfMessages - lastCreated * 8)];
+        for (int i = 0; i < data.length; i++) {
+            data[i] = lastCreated * 8 + i + 1;
+        }
+
+        return new Message(
+                (byte) 0,
+                processId,
+                lastCreated+1,
+                data,
+                System.currentTimeMillis()
+        );
+    }
+
+    private void sendMessage(Message message, InetAddress receiverAddress, int receiverPort) {
+        // Prepare the packet
+        ByteBuffer buffer = ByteBuffer.allocate(message.getMessageSize()); // boolean, integer, integer, string payload, long time
+
+        buffer.put(message.getMessageType()); // 0 meaning it is NOT an ACK
+        buffer.putInt(message.getSenderId());
+        buffer.putInt(message.getBatchNumber());
+        int[] data = message.getData();
+        for (int i = 0; i < data.length; i++)
+            buffer.putInt(data[i]);
+        buffer.putInt(processId);
+        buffer.putLong(System.currentTimeMillis()); // TODO change the broadcastTime
+
+        byte[] sendData = buffer.array();
+//        System.out.println("senData " + Arrays.toString(sendData));
+        DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, receiverAddress, receiverPort);
+
+        // log & send the packet
+        try {
+            assert socket != null : "Broadcast Socket is null in sendBatch";
+            // TODO log when creating the message (PREVIOUSLY LOGGED HERE)
+            socket.send(sendPacket);
+        } catch (AssertionError e) {
+            System.out.println(e.getMessage());
+            System.exit(1);
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.err.println("Failed to send batch number " + message.getBatchNumber() + ": " + e.getMessage());
+            if (socket != null && !socket.isClosed()) {
+                socket.close();
+            }
+            System.exit(1);
+        }
+    }
+
+    private void logMessage(Message message) {
+        for (int number : message.getData()) {
+            // log the broadcast
+            try {
+                logMutex.lock();
+                logBuffer.log("b " + number);
+            } finally {
+                logMutex.unlock();
+            }
+        }
     }
 
     public void broadcast() { // call this method from main on a separate thread
-//        System.out.println("Is socket null?" + (socket==null));
         System.out.println("Broadcast called");
-        toAdd = new int[idToAddressPort.size()];
-        Arrays.fill(toAdd, 1);
-        int[] ackedCount = new int[idToAddressPort.size()]; // TODO the logic with ackedCount is flawed - it can be 0 also during execution
-        Deque<Integer>[] batches = new ArrayDeque[idToAddressPort.size()];
-        for (int i = 0; i < idToAddressPort.size(); i++)
+
+        // Initialize broadcast variables
+        int newToAdd = 1; // number of new messages to add
+        Integer lastNewAdded = 0;
+
+        int[] ackedCount = new int[this.numberOfHosts]; // TODO the logic with ackedCount is flawed - it can be 0 also during execution
+        Deque<Integer>[] batches = new ArrayDeque[this.numberOfHosts];
+
+        for (int i = 0; i < this.numberOfHosts; i++)
             batches[i] = new ArrayDeque<>();
-        Phase[] phases = new Phase[idToAddressPort.size()];
+
+        Phase[] phases = new Phase[this.numberOfHosts];
         Arrays.fill(phases, Phase.SLOW_START);
-        int[] windowSize = new int[idToAddressPort.size()];
+
+        int[] windowSize = new int[this.numberOfHosts];
         Arrays.fill(windowSize, MIN_WINDOW_SIZE);
 
         int numberOfBatches = numberOfMessages / BATCH_SIZE;
@@ -116,251 +183,90 @@ public class BEB {
 
         this.numberOfBatches = numberOfBatches;
 
-        while (true) {
-            // batch broadcast
-//            System.out.print("window sizes = ");
-//            System.out.println("batches[receiverId-1] should be equal");
-            for (int receiverId = 1; receiverId <= idToAddressPort.size(); receiverId++) {
-                int batchesBefore = batches[receiverId - 1].size();
-//                System.out.println(System.identityHashCode(batches[receiverId - 1]));
-                windowSize[receiverId - 1] = loadBatches(batches[receiverId - 1], windowSize[receiverId - 1], receiverId); // windowSize can be shrunken in this method if it is the last batch
-//                System.out.print(windowSize[receiverId - 1] + "-b" + batches[receiverId - 1].size() + "-bb" + batchesBefore);
-                int toLog = windowSize[receiverId - 1] - batchesBefore;
+        ownMessagesDelivered = new AtomicInteger(0); // TODO this will hold logic for how many to send
+        int totalDelivered = 0;
 
-                generateAndSendBatches(batches, toLog, receiverId); // toLog used for logging
-            }
+        // Broadcast server
+        while (true) {
+//            System.out.println("broadcast adding " + newToAdd + " messages. Last acked " + ownMessagesDelivered.get() + " own messages. toBroadcast=" + toBroadcast.toString());
+            System.out.println("Broadcast log toBroadcast.size=" + toBroadcast.size() + " newToAdd=" + newToAdd + " rtt=" + rtt.get() + " lastNewAdded=" + lastNewAdded + " noBatches=" + numberOfBatches + " ownMessagesDelivered=" + ownMessagesDelivered.get());
 //            System.out.println();
 
-            // await acks from all receivers
-            // rtt is the max rtt of them all
-//            System.out.println("RTT ");
-//            System.out.println("batches before " + batches[0].size());
-            long rtt = awaitAcks(batches);
-//            System.out.println("batches after " + batches[0].size());
-//            System.out.println("RTT after " + rtt + " phases[0] = " + phases[0]);
+            // reset
+            ownMessagesDelivered.set(0); // TODO this will hold logic for how many to send
 
-            // update rtt
+            // Generate & add newToAdd messages
+            for (int i = 0; i < newToAdd; i++) {
+                if (lastNewAdded == numberOfBatches)
+                    break;
+
+                Message message = createMessage(lastNewAdded++);
+                logMessage(message);
+
+                // TODO idea - have a separate queue for my own messages (treat them differently)
+                toBroadcast.put(
+                        MessageHashUtil.createMessageHash(message),
+                        new MessageAcker(message)
+                );
+            }
+
+            // Broadcast
+            for (Map.Entry<Long, MessageAcker> entry : toBroadcast.entrySet()) {
+                for (Map.Entry<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> addressPort : idToAddressPort.entrySet()){
+                    if (!entry.getValue().isAcked(addressPort.getKey())) {
+                        sendMessage(entry.getValue().getMessage(), addressPort.getValue().getKey(), addressPort.getValue().getValue());
+//                int recommendedWindowSize = getRecommendedWindowSize(); // optional
+                    }
+                }
+            }
+
+            // TODO Logic about how many new messages to add next time based on the delivery rate
+            //  also based on toBroadcast size
+            //  it should not be in absolute values, because they can kill processes
+            //  rather compare before vs after (periodically) - if the difference is too big - exponential decrease
+            //  if it is not - additive increase
+            // TODO this could be faulty
+
+            // sleep
             try {
-                broadcastSocket.setSoTimeout(Math.min(MAX_ACK_WAIT_TIME, (int) rtt)); // TODO the min() was added after M1 submission
-            } catch (SocketException e) {
+                Thread.sleep(rtt.get());
+            } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
 
-            for (int i = 0; i < idToAddressPort.size(); i++) {
-                int acksReceived = 0;
-                acksReceived += windowSize[i] - batches[i].size();
-                ackedCount[i] += acksReceived;
+                        //simple logic to add new messages
+            newToAdd = ownMessagesDelivered.get() != 0 ? 1 : 0; // only send the next message if old one was delivered
 
-                // LOGIC FOR WINDOW SIZE MANAGEMENT IN PERFECT NETWORK
-                if (ackedCount[i] == 0) // initially wait
-                    continue;
-                else if (batches[i].size() > AWAIT_CUT_OFF_THRESHOLD) {
-                    windowSize[i] /= 2;
-                    windowSize[i] = Math.max(MIN_WINDOW_SIZE, windowSize[i]);
-                    phases[i] = Phase.CONGESTION_AVOIDANCE;
-                } else {
-                    if (phases[i].equals(Phase.SLOW_START))
-                        windowSize[i] *= 2;
-                    else
-                        windowSize[i] += INCREMENT;
-                }
-            }
+//            // semi-advanced logic
+//            if (ownMessagesDelivered.get() > 50) { // case sending too fast
+//                newToAdd /= 2;
+//            } else if (lastNewAdded == 1 && ownMessagesDelivered.get() == 0) { // case waiting for other processes to start
+//                newToAdd = 0;
+//            } else {
+//                newToAdd += ownMessagesDelivered.get(); // regular case
+//            }
         }
-    }
-
-    private int loadBatches(Deque<Integer> batches, int windowSize, int receiverId) {
-//        System.out.println(System.identityHashCode(batches));
-        for (int i = batches.size(); i < windowSize; i++) {
-            if (toAdd[receiverId - 1] > numberOfBatches)
-                return batches.size(); // end reached
-            batches.add(toAdd[receiverId - 1]++);
-        }
-        return batches.size();
-    }
-
-    public void generateAndSendBatches(Deque<Integer>[] batches, int toLog, int receiverId) {
-        // get receiver info
-        InetAddress receiverAddress = idToAddressPort.get(receiverId).getKey();
-        int receiverPort = idToAddressPort.get(receiverId).getValue();
-
-        int remaining = batches[receiverId - 1].size();
-//        System.out.println(System.identityHashCode(batches[receiverId - 1]));
-
-        // batch sending logic
-        for (int batchNumber : batches[receiverId - 1]) {
-            int currentBatchSize = Math.min(BATCH_SIZE, numberOfMessages - (batchNumber - 1) * BATCH_SIZE);
-
-            // Create and fill the batch array
-            int[] batch = new int[currentBatchSize];
-            for (int j = 0; j < currentBatchSize; j++) {
-                batch[j] = (batchNumber - 1) * BATCH_SIZE + j + 1;
-            }
-
-            sendBatch(batchNumber, batch, remaining <= toLog, receiverAddress, receiverPort);
-            remaining--;
-        }
-    }
-
-    public void sendBatch(int batchNumber, int[] batch, boolean logBatch, InetAddress receiverAddress, int receiverPort) {
-
-        // Convert senderId and messageNumber to a space-separated string format
-        StringBuilder payload = new StringBuilder();
-
-//        System.out.println("batch number " + batchNumber + " batchLength = " + batch.length);
-        // append message numbers to the batch
-        for (int messageNumber : batch) {
-            payload.append(messageNumber);
-            payload.append(" ");
-        }
-
-        // Remove the last space
-        if (payload.length() > 0) {
-            payload.setLength(payload.length() - 1);
-        }
-
-        // payload e.g., 1,32,"42 43 44 45 46 47 48 49 50",
-        byte[] payloadBytes = payload.toString().getBytes(StandardCharsets.UTF_8);
-
-        // Get the current system time in milliseconds
-        long millis = System.currentTimeMillis();
-
-        // Create a ByteBuffer
-        ByteBuffer buffer = ByteBuffer.allocate(1 + 8 + payloadBytes.length + 8); // boolean, integer, integer, string payload, long time
-
-        // Place the payload bytes into the buffer
-//        System.out.println("PLACING SENDER_ID " + processId + " INTO THE DATAGRAM PACKET");
-        buffer.put((byte) 0); // 1 meaning it is NOT an ACK
-        buffer.putInt(processId);
-        buffer.putInt(batchNumber);
-        buffer.put(payloadBytes);
-        buffer.putLong(millis);
-
-        // Create a packet to send data to the receiver's address
-        byte[] sendData = buffer.array();
-        DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, receiverAddress, receiverPort);
-
-        // send the packet
-        try {
-            assert broadcastSocket != null : "Broadcast Socket is null in sendBatch";
-            broadcastSocket.send(sendPacket);
-            if (logBatch) {
-                for (int messageToSend : batch) {
-                    // log the broadcast
-                    try {
-                        logMutex.lock();
-                        logBuffer.log("b " + messageToSend);
-                    } finally {
-                        logMutex.unlock();
-                    }
-                }
-            }
-        } catch (AssertionError e) {
-            System.out.println(e.getMessage());
-            System.exit(1);
-        } catch (Exception e) {
-            e.printStackTrace();
-            System.err.println("Failed to send batch number " + batchNumber + ": " + e.getMessage());
-            if (broadcastSocket != null && !broadcastSocket.isClosed()) {
-                broadcastSocket.close();
-            }
-            System.exit(1);
-        }
-    }
-
-    public long awaitAcks(Deque<Integer>[] batches) {
-        // Prepare a packet to receive ACK data
-        byte[] ackData = new byte[17]; // senderId and batchNumber
-        DatagramPacket ackPacket = new DatagramPacket(ackData, ackData.length);
-        long rtt = 1;
-
-        while (true) {
-            try {
-                // early exit condition - all acks received from everyone
-                boolean allAcked = true;
-                for (Deque<Integer> batch : batches)
-                    if (batch.size() != 0) {
-                        allAcked = false;
-                        break;
-                    }
-                if (allAcked)
-                    return rtt;
-
-                assert broadcastSocket != null : "Broadcast Socket is null in awaitAcks()";
-                broadcastSocket.receive(ackPacket); // this is blocking until received
-
-                // the below executes only if ACK is received before timeout
-                byte[] data = ackPacket.getData();
-                int length = ackPacket.getLength();
-
-                // Ensure the length is at least 8 to read two integers
-                if (length < 17) {
-                    throw new IllegalArgumentException("Packet is too short to contain two integers and a long.");
-                }
-                byte isAck = data[0];
-                int ackSenderId = ((data[1] & 0xFF) << 24) | ((data[2] & 0xFF) << 16) | ((data[3] & 0xFF) << 8) | (data[4] & 0xFF);
-                int ackBatchNumber = ((data[5] & 0xFF) << 24) | ((data[6] & 0xFF) << 16) | ((data[7] & 0xFF) << 8) | (data[8] & 0xFF);
-                long sendTime =
-                        ((long) (data[length - 8] & 0xFF) << 56) |
-                                ((long) (data[length - 7] & 0xFF) << 48) |
-                                ((long) (data[length - 6] & 0xFF) << 40) |
-                                ((long) (data[length - 5] & 0xFF) << 32) |
-                                ((long) (data[length - 4] & 0xFF) << 24) |
-                                ((long) (data[length - 3] & 0xFF) << 16) |
-                                ((long) (data[length - 2] & 0xFF) << 8) |
-                                ((long) (data[length - 1] & 0xFF));
-                if (isAck == (byte) 0 )
-                    System.out.println("Should be an ack from " + ackSenderId + " batch " + ackBatchNumber);
-                rtt = Math.max(rtt, System.currentTimeMillis() - sendTime);
-//                System.out.println("rtt " + rtt);
-
-                // remove ackBatchNumber from the batches queue
-                if (ackSenderId == processId) { // should be always true TODO remove this if
-//                    System.out.println(" delivered from ackSenderId " + batches[ackSenderId - 1].toString());
-                    batches[ackSenderId - 1].remove(ackBatchNumber);
-                }
-                else
-                    System.out.println("ERROR ACK meant for sender " + ackSenderId + " arrived to sender " + processId);
-
-            } catch (java.net.SocketTimeoutException e) {
-                // Timeout occurred, stop processing received
-                System.out.println("awaitAcks Broadcast Socket timeout");
-                break;
-            } catch (AssertionError e) {
-                System.err.println(e.getMessage());
-                System.exit(1);
-            } catch (Exception e) {
-                e.printStackTrace();
-                System.err.println("Error while waiting for ACKs: " + e.getMessage());
-                if (broadcastSocket != null && !broadcastSocket.isClosed()) {
-                    broadcastSocket.close();
-                }
-                System.exit(1);
-            }
-        }
-        return rtt;
     }
 
     // RECEIVER
-    public void handleData(byte[] data, int length) {
-        // Ensure the length is at least 17 to read 1 byte, two integers & 1 long
-        if (length < 17) {
-            throw new IllegalArgumentException("Packet is too short to contain two integers and a long.");
-        }
-
-        // Extract the first two integers
-        byte isAck = data[0];
-        if (isAck == (byte) 1)
-            System.out.println("Should NOT be an ack");
+    private void handleAck(byte[] data, int length, InetAddress relayAddress, int relayPort) {
+//        System.out.println("Received ACK");
+        // Extract data
         int senderId = ((data[1] & 0xFF) << 24) |
                 ((data[2] & 0xFF) << 16) |
                 ((data[3] & 0xFF) << 8) |
                 (data[4] & 0xFF);
+
         int batchNumber = ((data[5] & 0xFF) << 24) |
                 ((data[6] & 0xFF) << 16) |
                 ((data[7] & 0xFF) << 8) |
                 (data[8] & 0xFF);
 
-        // Extract the last 8 bytes as a long (nanoTime)
+        int relayId = ((data[length - 12] & 0xFF) << 24) |
+                ((data[length - 11] & 0xFF) << 16) |
+                ((data[length - 10] & 0xFF) << 8) |
+                (data[length - 9] & 0xFF);
+
         long sendTime = ((long) (data[length - 8] & 0xFF) << 56) |
                 ((long) (data[length - 7] & 0xFF) << 48) |
                 ((long) (data[length - 6] & 0xFF) << 40) |
@@ -370,47 +276,119 @@ public class BEB {
                 ((long) (data[length - 2] & 0xFF) << 8) |
                 ((long) (data[length - 1] & 0xFF));
 
-        if (isAck == (byte) 0) {
-            // Read the remaining data as a UTF-8 string
-            String message = new String(data, 9, length - 17, StandardCharsets.UTF_8);
+        // TODO mark batch as acked
+        //  mark ACK
+        //  reliably broadcast ACK
+        //  if > N / 2 + 1 have ACKed, remove from batches
+        if (senderId == processId && relayId != processId) { // TODO verify if this is the best strategy for rtt
+            rtt.set(Math.min(MAX_ACK_WAIT_TIME, Math.max(rtt.get(), System.currentTimeMillis() - sendTime)));
 
-            // Split the payload by spaces
-            String[] parts = message.trim().split("\\s+");
-            if (parts[0].length() == 0) {
-                System.out.println("Empty Message (likely an ACK) " + message.trim() + " in batch " + batchNumber);
-                return;
+        }
+
+        long messageHash = MessageHashUtil.createMessageHash(senderId, batchNumber);
+        if (!isUrbDelivered(senderId, batchNumber)) {
+//            System.out.println("processing ack from " + senderId + " batch " + batchNumber);
+
+            int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
+//            System.out.println("messageHash " + messageHash + " decoded " + MessageHashUtil.extractSenderId(messageHash) + " " + MessageHashUtil.extractMessageNumber(messageHash) + " numberAcked " + numberAcked + " ackedSet " + toBroadcast.get(messageHash).getAcked().toString());
+
+            // urbDeliver
+            if (numberAcked > numberOfHosts / 2) {
+                int[] payload = new int[(length - 21) / 4];
+                for (int i = 0; i < payload.length; i++) {
+                    payload[i] = ((data[i*4 + 9] & 0xFF) << 24) |
+                            ((data[i*4 + 10] & 0xFF) << 16) |
+                            ((data[i*4 + 11] & 0xFF) << 8) |
+                            (data[i*4 + 12] & 0xFF);
+                }
+
+                try {
+                    logMutex.lock();
+                    markUrbDelivered(senderId, batchNumber, payload);  // Process each number directly
+                } finally {
+                    logMutex.unlock();
+                }
+//                // TODO remove from toBroadcast
+//                toBroadcast.remove(messageHash);
             }
 
-            // Parse the remaining integers as messageNumbers
-            for (String part : parts) {
-//            System.out.println("part " + part + " from batchNumber " + batchNumber);
-                int messageNumber = Integer.parseInt(part);  // Direct parsing without trim
-                markDelivered(senderId, messageNumber);      // Process each number directly
+            if (numberAcked == numberOfHosts) {
+                // TODO remove from toBroadcast
+                toBroadcast.remove(messageHash);
             }
-
-            System.out.println("sending ack for batch Number " + batchNumber);
-            sendACK(senderId, batchNumber, sendTime);
-        } else {
-            rtt = Math.max(rtt, System.currentTimeMillis() - sendTime);
-//                System.out.println("rtt " + rtt);
-
-            // remove ackBatchNumber from the batches queue
-            if (ackSenderId == processId) { // should be always true TODO remove this if
-//                    System.out.println(" delivered from ackSenderId " + batches[ackSenderId - 1].toString());
-                batches[ackSenderId - 1].remove(ackBatchNumber);
-            }
-            else
-                System.out.println("ERROR ACK meant for sender " + ackSenderId + " arrived to sender " + processId);
-
         }
     }
 
+    private void handleMessage(byte[] data, int length, InetAddress relayAddress, int relayPort) {
+//        System.out.println("Received Message");
+        // Extract data
+        int senderId = ((data[1] & 0xFF) << 24) |
+                ((data[2] & 0xFF) << 16) |
+                ((data[3] & 0xFF) << 8) |
+                (data[4] & 0xFF);
+
+        int batchNumber = ((data[5] & 0xFF) << 24) |
+                ((data[6] & 0xFF) << 16) |
+                ((data[7] & 0xFF) << 8) |
+                (data[8] & 0xFF);
+
+        int[] payload = new int[(length - 21) / 4];
+        for (int i = 0; i < payload.length; i++) {
+            payload[i] = ((data[i*4 + 9] & 0xFF) << 24) |
+                    ((data[i*4 + 10] & 0xFF) << 16) |
+                    ((data[i*4 + 11] & 0xFF) << 8) |
+                    (data[i*4 + 12] & 0xFF);
+        }
+
+        int relayId = ((data[length - 12] & 0xFF) << 24) |
+                ((data[length - 11] & 0xFF) << 16) |
+                ((data[length - 10] & 0xFF) << 8) |
+                (data[length - 9] & 0xFF);
+
+        long sendTime = ((long) (data[length - 8] & 0xFF) << 56) |
+                ((long) (data[length - 7] & 0xFF) << 48) |
+                ((long) (data[length - 6] & 0xFF) << 40) |
+                ((long) (data[length - 5] & 0xFF) << 32) |
+                ((long) (data[length - 4] & 0xFF) << 24) |
+                ((long) (data[length - 3] & 0xFF) << 16) |
+                ((long) (data[length - 2] & 0xFF) << 8) |
+                ((long) (data[length - 1] & 0xFF));
+
+//        System.out.println("Received type " + data[0] + " from " + senderId + " batch " + batchNumber + " payload=" + Arrays.toString(payload) + " at " + sendTime);
+
+        if (!isUrbDelivered(senderId, batchNumber)) {
+            long messageHash = MessageHashUtil.createMessageHash(senderId, batchNumber);
+            toBroadcast.putIfAbsent(
+                    messageHash,
+                    new MessageAcker(new Message(data[0], senderId, batchNumber, payload, sendTime))
+            );
+        }
+//
+//            int numberAcked = toBroadcast.get(messageHash).addAckFrom(senderId);
+//
+//            // urbDeliver
+//            if (numberAcked > numberOfHosts / 2) {
+//                try {
+//                    logMutex.lock();
+//                    markUrbDelivered(senderId, batchNumber, payload);  // Process each number directly
+//                } finally {
+//                    logMutex.unlock();
+//                }
+//                // TODO remove from toBroadcast
+//                toBroadcast.remove(messageHash);
+//            }
+//        }
+
+        // Send ACK
+        sendACK(data, length, relayAddress, relayPort);
+    }
+
     // TODO have one receive loop
-    // this loop will receive data & acks simultaneously
-    // each message must be modified and contain a bit isAck (e.g. the first bit)
-    // if it is ack, process it on a separate thread
-    // if it is a message, process it on a separate thread
-    // broadcast loop thread and ack processing thread will share resources - timeout must be set & windowsize adjusted
+    //  this loop will receive data & acks simultaneously
+    //  each message must be modified and contain a bit isAck (e.g. the first bit)
+    //  if it is ack, process it on a separate thread
+    //  if it is a message, process it on a separate thread
+    //  broadcast loop thread and ack processing thread will share resources - timeout must be set & windowsize adjusted
     public void receive() {
         try {
             // Prepare a packet to receive data
@@ -421,7 +399,19 @@ public class BEB {
                 // Receive the packet
                 try {
                     socket.receive(receivePacket);
-                    handleData(receivePacket.getData(), receivePacket.getLength());
+
+                    byte[] data = receivePacket.getData();
+                    int length = receivePacket.getLength();
+                    InetAddress relayAddress = receivePacket.getAddress();
+                    int relayPort = receivePacket.getPort();
+
+                    byte payloadType = data[0];
+
+                    if (payloadType == (byte) 0)
+                        handleMessage(data, length, relayAddress, relayPort); // TODO perhaps each on separate thread
+                    else
+                        handleAck(data, length, relayAddress, relayPort);
+
                 } catch (SocketTimeoutException e) { // TODO this should not exist
                     System.out.println("Receiver time out exception! Ignoring it and restarting the loop");
                 }
@@ -431,53 +421,64 @@ public class BEB {
             e.printStackTrace();
             System.exit(2);
         }
-//        } finally {
-//            if (socket != null && !socket.isClosed()) {
-//                System.out.println("Closing socket...");
-////                socket.close();
-//            }
-//        }
+         finally {
+            if (socket != null && !socket.isClosed()) {
+                System.out.println("Closing socket...");
+                socket.close();
+            }
+        }
     }
 
-    private void sendACK(int senderId, int batchNumber, long sendTime) { // TODO sendACK(int senderId, int batchNumber) - should be enough to identify originality
+    private void sendACK(byte[] ackData, int ackLength, InetAddress relayAddress, int relayPort) { // TODO sendACK(int senderId, int batchNumber) - should be enough to identify originality
+        // mark message as ACK
+        ackData[0] = 1;
 
-        // get sender's IP and port
-        InetAddress senderAddress = idToAddressPort.get(senderId).getKey();
-        int senderPort = idToAddressPort.get(senderId).getValue();
+        // change relayId to mine
+        ackData[ackLength - 12] = (byte) ((processId >> 24) & 0xFF);
+        ackData[ackLength - 11] = (byte) ((processId >> 16) & 0xFF);
+        ackData[ackLength - 10] = (byte) ((processId >> 8) & 0xFF);
+        ackData[ackLength - 9] = (byte) (processId & 0xFF);
 
-        // prepare ackData
-        ByteBuffer buffer = ByteBuffer.allocate(17);
-
-        // Put the senderId and batchNumber into the ByteBuffer
-        buffer.put((byte) 1); // 1 meaning it is an ACK
-        buffer.putInt(senderId);
-        buffer.putInt(batchNumber);
-        buffer.putLong(sendTime);
-
-        // Get the byte array from the ByteBuffer
-        byte[] ackData = buffer.array();
-
-        // Create ACK packet to send data back to the sender's address
-        DatagramPacket ackPacket = new DatagramPacket(ackData, ackData.length, senderAddress, senderPort);
+        // Create ACK packet to send data back to the relay's address
+        DatagramPacket ackPacket = new DatagramPacket(ackData, ackLength, relayAddress, relayPort);
 
         try {
-//            System.out.println("Sending ack from process " + processId + " port " + socket.getLocalPort() + " address " + socket.getLocalAddress() + " to " + senderId);
             socket.send(ackPacket);
         } catch (IOException e) {
-            System.err.println("Failed to send ACK for batchNumber=" + batchNumber + ": " + e.getMessage());
+            System.err.println("Failed to send ACK from relay port " + relayPort + ": " + e.getMessage());
             throw new RuntimeException(e);
         }
     }
 
-    private void markDelivered(int senderId, int messageNumber) {
-        if (!delivered.isDelivered(senderId, messageNumber)) {
-            try {
-                logMutex.lock();
-                logBuffer.log("d " + senderId + " " + messageNumber);
-            } finally {
-                logMutex.unlock();
+    private void markUrbDelivered(int senderId, int batchNumber, int[] payload) {
+//        System.out.println("URB Delivering " + senderId + " " + batchNumber + " " + Arrays.toString(payload));
+        if (senderId == processId && !urbDelivered.isSet(senderId, batchNumber)) {
+            ownMessagesDelivered.getAndIncrement();
+            for (int number : payload) {
+                logBuffer.log("d " + senderId + " " + number);
             }
-            delivered.setDelivered(senderId, messageNumber);
         }
+        urbDelivered.set(senderId, batchNumber);
     }
+    private boolean isUrbDelivered(int senderId, int batchNumber) {
+        boolean isSet;
+        try {
+            logMutex.lock();
+            isSet = urbDelivered.isSet(senderId, batchNumber);
+        } finally {
+            logMutex.unlock();
+        }
+        return isSet;
+    }
+//    private void markDelivered(int senderId, int messageNumber) {
+//        if (!delivered.isSet(senderId, messageNumber)) {
+//            try {
+//                logMutex.lock();
+//                logBuffer.log("d " + senderId + " " + messageNumber);
+//            } finally {
+//                logMutex.unlock();
+//            }
+//            delivered.set(senderId, messageNumber);
+//        }
+//    }
 }
