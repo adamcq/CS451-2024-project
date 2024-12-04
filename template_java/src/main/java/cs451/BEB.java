@@ -30,6 +30,8 @@ public class BEB {
     private final int INCREMENT = 1;
     int MAX_ACK_WAIT_TIME = 200;
     private LogBuffer logBuffer;
+    long messagesSent;
+    long acksSent;
     DatagramSocket socket;
     enum Phase {SLOW_START, CONGESTION_AVOIDANCE}
     ReentrantLock logMutex;
@@ -70,13 +72,6 @@ public class BEB {
             throw new RuntimeException(e);
         }
 
-        // add socket shutdown hook
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            System.out.println("Inside Socket Shutdown Hook");
-            if (socket != null && !socket.isClosed())
-                socket.close();
-        }));
-
         // log Mutex
         logMutex = new ReentrantLock();
 
@@ -89,6 +84,17 @@ public class BEB {
         // start broadcast
         Thread broadcastThread = new Thread(this::broadcast, "BroadcastThread");
         broadcastThread.start();
+
+        // add socket shutdown hook
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            System.out.println("Inside Socket Shutdown Hook");
+            System.out.println("Messages Sent " + messagesSent);
+            System.out.println("Acks Sent " + acksSent);
+            broadcastThread.interrupt();
+            receiverThread.interrupt();
+            if (socket != null && !socket.isClosed())
+                socket.close();
+        }));
     }
 
 
@@ -133,6 +139,7 @@ public class BEB {
             assert socket != null : "Broadcast Socket is null in sendBatch";
             // TODO log when creating the message (PREVIOUSLY LOGGED HERE)
             socket.send(sendPacket);
+            messagesSent++;
         } catch (AssertionError e) {
             System.out.println(e.getMessage());
             System.exit(1);
@@ -185,6 +192,7 @@ public class BEB {
 
         ownMessagesDelivered = new AtomicInteger(0); // TODO this will hold logic for how many to send
         int totalDelivered = 0;
+        int broadcast_timeout = 1;
 
         // Broadcast server
         while (true) {
@@ -211,12 +219,22 @@ public class BEB {
             }
 
             // Broadcast
+            int counter = 0;
             for (Map.Entry<Long, MessageAcker> entry : toBroadcast.entrySet()) {
                 for (Map.Entry<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> addressPort : idToAddressPort.entrySet()){
                     if (!entry.getValue().isAcked(addressPort.getKey())) {
                         sendMessage(entry.getValue().getMessage(), addressPort.getValue().getKey(), addressPort.getValue().getValue());
 //                int recommendedWindowSize = getRecommendedWindowSize(); // optional
                     }
+                }
+                // sleep
+                if ((++counter) %5==0) {
+                    try {
+                        Thread.sleep(broadcast_timeout);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    counter = 0;
                 }
             }
 
@@ -226,13 +244,6 @@ public class BEB {
             //  rather compare before vs after (periodically) - if the difference is too big - exponential decrease
             //  if it is not - additive increase
             // TODO this could be faulty
-
-            // sleep
-            try {
-                Thread.sleep(rtt.get());
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
 
                         //simple logic to add new messages
             newToAdd = ownMessagesDelivered.get() != 0 ? 1 : 0; // only send the next message if old one was delivered
@@ -308,12 +319,14 @@ public class BEB {
                 } finally {
                     logMutex.unlock();
                 }
-//                // TODO remove from toBroadcast
-//                toBroadcast.remove(messageHash);
             }
+        }
 
+        if (isUrbDelivered(senderId, batchNumber) && toBroadcast.containsKey(messageHash)) {
+            int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
+
+            // remove
             if (numberAcked == numberOfHosts) {
-                // TODO remove from toBroadcast
                 toBroadcast.remove(messageHash);
             }
         }
@@ -356,13 +369,36 @@ public class BEB {
 
 //        System.out.println("Received type " + data[0] + " from " + senderId + " batch " + batchNumber + " payload=" + Arrays.toString(payload) + " at " + sendTime);
 
+        long messageHash = MessageHashUtil.createMessageHash(senderId, batchNumber);
         if (!isUrbDelivered(senderId, batchNumber)) {
-            long messageHash = MessageHashUtil.createMessageHash(senderId, batchNumber);
             toBroadcast.putIfAbsent(
                     messageHash,
                     new MessageAcker(new Message(data[0], senderId, batchNumber, payload, sendTime))
             );
+
+            int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
+//            System.out.println("messageHash " + messageHash + " decoded " + MessageHashUtil.extractSenderId(messageHash) + " " + MessageHashUtil.extractMessageNumber(messageHash) + " numberAcked " + numberAcked + " ackedSet " + toBroadcast.get(messageHash).getAcked().toString());
+
+            // urbDeliver
+            if (numberAcked > numberOfHosts / 2) {
+                try {
+                    logMutex.lock();
+                    markUrbDelivered(senderId, batchNumber, payload);  // Process each number directly
+                } finally {
+                    logMutex.unlock();
+                }
+            }
         }
+
+        if (isUrbDelivered(senderId, batchNumber) && toBroadcast.containsKey(messageHash)) {
+            int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
+
+            // remove
+            if (numberAcked == numberOfHosts) {
+                toBroadcast.remove(messageHash);
+            }
+        }
+
 //
 //            int numberAcked = toBroadcast.get(messageHash).addAckFrom(senderId);
 //
@@ -444,6 +480,7 @@ public class BEB {
 
         try {
             socket.send(ackPacket);
+            acksSent++;
         } catch (IOException e) {
             System.err.println("Failed to send ACK from relay port " + relayPort + ": " + e.getMessage());
             throw new RuntimeException(e);
@@ -452,7 +489,7 @@ public class BEB {
 
     private void markUrbDelivered(int senderId, int batchNumber, int[] payload) {
 //        System.out.println("URB Delivering " + senderId + " " + batchNumber + " " + Arrays.toString(payload));
-        if (senderId == processId && !urbDelivered.isSet(senderId, batchNumber)) {
+        if (!urbDelivered.isSet(senderId, batchNumber)) {
             ownMessagesDelivered.getAndIncrement();
             for (int number : payload) {
                 logBuffer.log("d " + senderId + " " + number);

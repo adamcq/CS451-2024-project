@@ -63,11 +63,15 @@ def main():
   print("FILES BROADCAST CHECK:")
   delivered = {}
   for sender_output in sender_outputs:
+    if not os.path.isfile(sender_output): # TODO this should NOT be necessary !!!
+      print(f"Error: Sender output file {sender_output} does not exist.")
+      continue
     with open(sender_output, 'r') as file:
       seen_messages = set()
       line_number = 0
       min_message, max_message = math.inf, 0
       sender_id = os.path.basename(sender_output).split('.')[0]
+      delivered[sender_id] = set()
       errors = []
       delivery_errors = []
       for line in file:
@@ -82,19 +86,17 @@ def main():
           else:
             seen_messages.add(message_id)
         if len(parts) == 3 and parts[0] == 'd':
-          sender, message = int(parts[1]), int(parts[2])
-          if sender not in delivered:
-            delivered[sender] = set()
-          if message in delivered[sender]:
-            delivery_errors.append(f"ERROR: Duplicate DELIVERY found: process_id={sender_id} sender={sender}, message={message}, line_number={line_number}")
-          delivered[sender].add(message)
+          broadcaster, message = int(parts[1]), int(parts[2])
+          if (broadcaster, message) in delivered[sender_id]:
+            delivery_errors.append(f"ERROR: Duplicate DELIVERY found: process_id={sender_id} sender={broadcaster}, message={message}, line_number={line_number}")
+          delivered[sender_id].add((broadcaster, message))
       if errors:
         for error_message_id, error_line_number in errors:
           print(f"ERROR: Duplicate message found: sender_id={sender_id}, message_id={error_message_id}, line_number={error_line_number}")
-        print(f'sender {sender_id} incorrectly broadcast {line_number - len(delivered[sender])} messages. min: {min_message} max: {max_message}')
+        print(f'sender {sender_id} incorrectly broadcast {line_number - len(delivered[sender_id])} messages. min: {min_message} max: {max_message}')
       else:
         if sender_id in delivered: # TODO all sender_id should be in delivered!!!
-          print(f'sender {sender_id} correctly broadcast {line_number - len(delivered[sender])} messages. min: {min_message} max: {max_message}')
+          print(f'sender {sender_id} correctly broadcast {line_number - len(delivered[sender_id])} messages. min: {min_message} max: {max_message}')
   print()
 
   print("FILES DELIVERY CHECK:")
