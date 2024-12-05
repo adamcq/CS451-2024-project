@@ -1,6 +1,7 @@
 import argparse
 import os
 import math
+import collections
 
 def main():
 
@@ -62,48 +63,78 @@ def main():
   # check the correctness of sender output files
   print("FILES BROADCAST CHECK:")
   delivered = {}
-  for sender_output in sender_outputs:
+  for i,sender_output in enumerate(sender_outputs):
     if not os.path.isfile(sender_output): # TODO this should NOT be necessary !!!
       print(f"Error: Sender output file {sender_output} does not exist.")
       continue
     with open(sender_output, 'r') as file:
-      seen_messages = set()
+      broadcast_messages = collections.deque([])
       line_number = 0
       min_message, max_message = math.inf, 0
-      sender_id = os.path.basename(sender_output).split('.')[0]
-      delivered[sender_id] = set()
-      errors = []
+      sender_id = i+1 #os.path.basename(sender_output).split('.')[0]
+      delivered[sender_id] = {}
+      for i in range(len(sender_outputs)):
+        delivered[sender_id][i+1] = collections.deque([])
+      broadcast_errors = []
       delivery_errors = []
+
       for line in file:
         line_number += 1
         parts = line.split()
+
+        # process broadcast line
         if len(parts) == 2 and parts[0] == 'b':
           message_id = int(parts[1])
           max_message = max(max_message, message_id)
           min_message = min(min_message, message_id)
-          if message_id in seen_messages:
-            errors.append((message_id, line_number))
-          else:
-            seen_messages.add(message_id)
-        if len(parts) == 3 and parts[0] == 'd':
-          broadcaster, message = int(parts[1]), int(parts[2])
-          if (broadcaster, message) in delivered[sender_id]:
-            delivery_errors.append(f"ERROR: Duplicate DELIVERY found: process_id={sender_id} sender={broadcaster}, message={message}, line_number={line_number}")
-          delivered[sender_id].add((broadcaster, message))
-      if errors:
-        for error_message_id, error_line_number in errors:
-          print(f"ERROR: Duplicate message found: sender_id={sender_id}, message_id={error_message_id}, line_number={error_line_number}")
-        print(f'sender {sender_id} incorrectly broadcast {line_number - len(delivered[sender_id])} messages. min: {min_message} max: {max_message}')
-      else:
-        if sender_id in delivered: # TODO all sender_id should be in delivered!!!
-          print(f'sender {sender_id} correctly broadcast {line_number - len(delivered[sender_id])} messages. min: {min_message} max: {max_message}')
-  print()
+          if message_id == 1:
+            if len(broadcast_messages) > 0:
+              broadcast_errors.append((message_id, line_number))
+          elif message_id != broadcast_messages[-1] + 1:
+            broadcast_errors.append((message_id, line_number))
+          broadcast_messages.append(message_id)
 
-  print("FILES DELIVERY CHECK:")
-  print("Below is the number of messages delivered by each process: (should be equal for all correct processes)")
-  for process_id in delivered:
-    print(f'|{process_id}: {len(delivered[process_id])}', end="| ")
-  print()
+        # process delivery line
+        elif len(parts) == 3 and parts[0] == 'd':
+          broadcaster, message = int(parts[1]), int(parts[2])
+          if len(delivered[sender_id][broadcaster]) == 0:
+            if message != 1:
+              delivery_errors.append(f"ERROR: First message delivered to {sender_id} from {broadcaster} is {message}")
+          else:
+            if message != delivered[sender_id][broadcaster][-1] + 1:
+              delivery_errors.append(f"ERROR: Message {message} delivered by {sender_id} from {broadcaster} is delivered at the wrong time. Line {line_number}")
+          delivered[sender_id][broadcaster].append(message)
+         
+        # process error line
+        else:
+          print(f"ERROR: Line {line_number} has {len(parts)} elements")
+
+      # print broadcast errors
+      for error_message_id, error_line_number in broadcast_errors:
+        print(f"ERROR: Duplicate message found: sender_id={sender_id}, message_id={error_message_id}, line_number={error_line_number}")
+      
+      # print delivery errors
+      for delivery_error in delivery_errors:
+        print(delivery_error)
+      
+      # print broadcast summary
+      print('BROADCAST SUMMARY')
+      if broadcast_errors:
+        print(f'BROADCAST ERROR: sender {sender_id} incorrectly broadcast {len(broadcast_messages)} messages. min: {min_message} max: {max_message}')
+      else:
+        print(f'BROADCAST SUCCESS: sender {sender_id} correctly broadcast {len(broadcast_messages)} messages. min: {min_message} max: {max_message}')
+
+      # print delivery summary
+      print("DELIVERY SUMMARY:")
+      print("Below is the number of messages delivered from each process: (should be EVENTUALLY equal for all correct processes)")
+      for process_id in delivered:
+        delivered_messages = 0
+        for broadcaster in delivered[process_id]:
+          delivered_messages += len(delivered[process_id][broadcaster])
+        print(f'|{process_id}: {delivered_messages}', end="| ")
+      print()
+
+
   print()
 
 if __name__ == "__main__":
