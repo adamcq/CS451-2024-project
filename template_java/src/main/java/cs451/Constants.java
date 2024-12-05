@@ -17,4 +17,8 @@ public class Constants {
 
     // indexes for config
     public static final int CONFIG_VALUE = 6;
+
+    // custom
+    public static int UDP_PACKET_SIZE = 512;
+    public static int BATCH_SIZE = 8;
 }

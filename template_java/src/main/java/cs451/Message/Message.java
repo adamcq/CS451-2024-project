@@ -7,14 +7,14 @@ public class Message {
     private int senderId;
     private int batchNumber;
     private int[] data;
-    private long broadcastTime;
+    private long[] ackedFrom;
 
-    public Message(byte messageType, int senderId, int batchNumber, int[] data, long broadcastTime) {
+    public Message(byte messageType, int senderId, int batchNumber, int[] data, long[] ackedFrom) {
         this.messageType = messageType;
         this.senderId = senderId;
         this.batchNumber = batchNumber;
         this.data = data;
-        this.broadcastTime = broadcastTime;
+        this.ackedFrom = ackedFrom;
     }
 
     /**
@@ -32,13 +32,13 @@ public class Message {
                 processId,
                 lastCreated+1,
                 data,
-                System.currentTimeMillis()
+                new long[]{0L,0L}
         );
     }
 
     public int getMessageSize() {
         // byte type, int senderId, int batchNumber, int[] data, int relayId, long sendTime
-        return (Byte.SIZE + Integer.SIZE + Integer.SIZE + Integer.SIZE * data.length + Integer.SIZE + Long.SIZE) / 8;
+        return (Byte.SIZE + Integer.SIZE + Integer.SIZE + Integer.SIZE * data.length + Integer.SIZE + Byte.SIZE * 16) / 8;
     }
 
     public int getBatchNumber() {
@@ -73,12 +73,12 @@ public class Message {
         this.data = data;
     }
 
-    public long getBroadcastTime() {
-        return broadcastTime;
+    public long[] getAckedFrom() {
+        return ackedFrom;
     }
 
-    public void setBroadcastTime(long broadcastTime) {
-        this.broadcastTime = broadcastTime;
+    public void setAckedFrom(long[] ackedFrom) {
+        this.ackedFrom = ackedFrom;
     }
 
     @Override
@@ -88,7 +88,7 @@ public class Message {
                 ", senderId=" + senderId +
                 ", batchNumber=" + batchNumber +
                 ", data=" + Arrays.toString(data) +
-                ", broadcastTime=" + broadcastTime +
+                ", ackedFrom=" + ackedFrom +
                 '}';
     }
 }
