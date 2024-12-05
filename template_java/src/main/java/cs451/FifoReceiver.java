@@ -149,19 +149,13 @@ public class FifoReceiver {
                             ((data[i*4 + 11] & 0xFF) << 8) |
                             (data[i*4 + 12] & 0xFF);
                 }
-
-                try {
-                    logMutex.lock();
-                    markUrbDelivered(senderId, batchNumber, payload);  // Process each number directly
-                } finally {
-                    logMutex.unlock();
-                }
+                markUrbDelivered(senderId, batchNumber, payload);  // Process each number directly
             }
         }
 
         if (isUrbDelivered(senderId, batchNumber) && toBroadcast.containsKey(messageHash)) {
-//            int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
-            int numberAcked = setBitAndGetCount(ackedFrom, relayId);
+            int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
+//            int numberAcked = setBitAndGetCount(ackedFrom, relayId);
 
             // remove
             if (numberAcked == runConfig.getNumberOfHosts()) {
@@ -223,18 +217,13 @@ public class FifoReceiver {
                     messageHash,
                     new MessageAcker(new Message(data[0], senderId, batchNumber, payload, ackedFrom))
             );
-
             int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
+//            int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
 //            System.out.println("messageHash " + messageHash + " decoded " + MessageHashUtil.extractSenderId(messageHash) + " " + MessageHashUtil.extractMessageNumber(messageHash) + " numberAcked " + numberAcked + " ackedSet " + toBroadcast.get(messageHash).getAcked().toString());
 
             // urbDeliver
             if (numberAcked > runConfig.getNumberOfHosts() / 2) {
-                try {
-                    logMutex.lock();
-                    markUrbDelivered(senderId, batchNumber, payload);  // Process each number directly
-                } finally {
-                    logMutex.unlock();
-                }
+                markUrbDelivered(senderId, batchNumber, payload);  // Process each number directly
             }
         }
 
@@ -279,22 +268,20 @@ public class FifoReceiver {
                 ownMessagesDelivered.getAndIncrement();
 
             // FIFO deliver loop logic
-            while (batchNumber == 1 || (batchNumber > 1 && isUrbDelivered(senderId, batchNumber - 1) && isUrbDelivered(senderId, batchNumber))) {
-                for (int number : payload) {
-                    runConfig.getLogBuffer().log("d " + senderId + " " + number);
+            try {
+                logMutex.lock();
+                while (batchNumber == 1 || (batchNumber > 1 && isUrbDelivered(senderId, batchNumber - 1) && isUrbDelivered(senderId, batchNumber))) {
+                    for (int number : payload) {
+                        runConfig.getLogBuffer().log("d " + senderId + " " + number);
+                    }
+                    batchNumber++;
                 }
-                batchNumber++;
+            } finally {
+                logMutex.unlock();
             }
         }
     }
     private boolean isUrbDelivered(int senderId, int batchNumber) {
-        boolean isSet;
-        try {
-            logMutex.lock();
-            isSet = urbDelivered.isSet(senderId, batchNumber);
-        } finally {
-            logMutex.unlock();
-        }
-        return isSet;
+        return urbDelivered.isSet(senderId, batchNumber);
     }
 }

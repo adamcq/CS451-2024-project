@@ -28,6 +28,7 @@ public class BEB {
 
         this.logMutex = new ReentrantLock();
         this.toBroadcast = new ConcurrentHashMap<>();
+        this.ownMessagesDelivered = new AtomicInteger(0); // TODO this will hold logic for how many to send
 
         // add DEBUG shutdown hook TODO remove this
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -104,8 +105,6 @@ public class BEB {
             numberOfBatches++;
 
         this.numberOfBatches = numberOfBatches;
-
-        ownMessagesDelivered = new AtomicInteger(0); // TODO this will hold logic for how many to send
         int totalDelivered = 0;
         int broadcast_timeout = 1;
 
@@ -144,7 +143,7 @@ public class BEB {
                     try {
                         Thread.sleep(broadcast_timeout);
                     } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
+                        Thread.currentThread().interrupt();
                     }
 //                    counter = 0;
 //                }
