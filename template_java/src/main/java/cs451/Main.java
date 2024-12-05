@@ -3,7 +3,9 @@ package cs451;
 import cs451.Parsers.Parser;
 
 import java.io.*;
+import java.net.DatagramSocket;
 import java.net.InetAddress;
+import java.net.SocketException;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.HashMap;
 
@@ -20,41 +22,18 @@ public class Main {
         System.out.println("Writing output.");
     }
 
-    private static void initSignalHandlers(LogBuffer logBuffer) {
+    private static void initSignalHandlers(LogBuffer logBuffer, DatagramSocket socket, Thread[] threads) {
         Runtime.getRuntime().addShutdownHook(new Thread() {
             @Override
             public void run() {
                 handleSignal();
+                for (Thread thread : threads)
+                    thread.interrupt();
                 logBuffer.close();
+                if (socket != null && !socket.isClosed())
+                    socket.close();
             }
         });
-    }
-
-    private static Integer[] getPerfectLinkConfigInfo(String cfgPath) {
-        Integer[] configInfo = {null, null};
-
-        try(BufferedReader br = new BufferedReader(new FileReader(cfgPath))) {
-            int lineNum = 1;
-            for(String line; (line = br.readLine()) != null; lineNum++) {
-                if (line.isBlank()) {
-                    continue;
-                }
-
-                String[] splits = line.split(SPACES_REGEX);
-                if (splits.length != 2) {
-                    System.err.println("Problem with the line " + lineNum + " in the config file!");
-                    return configInfo;
-                }
-
-                configInfo[0] = Integer.parseInt(splits[0]);
-                configInfo[1] = Integer.parseInt(splits[1]);
-            }
-        } catch (IOException e) {
-            System.err.println("Problem with the config file!");
-            return configInfo;
-        }
-
-        return configInfo;
     }
 
     private static Integer[] getFifoConfigInfo(String cfgPath) {
@@ -113,14 +92,28 @@ public class Main {
             throw new RuntimeException(e);
         }
 
-        initSignalHandlers(logBuffer);
+        // init socket
+        DatagramSocket socket;
+        InetAddress broadcasterAddress = idToAddressPort.get(parser.myId()).getKey();
+        int broadcasterPort = idToAddressPort.get(parser.myId()).getValue();
 
-        BEB bestEffortBroadcast = new BEB(idToAddressPort, parser.myId(), logBuffer, numberOfMessages);
-//        new Thread(bestEffortBroadcast::receive).start();
-//        new Thread(bestEffortBroadcast::broadcast).start();
+        try {
+            socket = new DatagramSocket(broadcasterPort, broadcasterAddress); // this works for both sender and receiver, because we put senderId == receiverId for receiver in Main
+        } catch (SocketException e) {
+            System.err.println("Creating receiver socket failed. Socket is USED!!!\n" + e.getMessage());
+            throw new RuntimeException(e);
+        }
 
-//        link.shutdown(); // only when using threads in the link
-//        System.exit(0);
+        // BEB
+        BEB bestEffortBroadcast = new BEB(idToAddressPort, parser.myId(), logBuffer, socket, numberOfMessages);
+        Thread receiverThread = new Thread(bestEffortBroadcast::receive, "ReceiverThread");
+        Thread broadcastThread = new Thread(bestEffortBroadcast::broadcast, "BroadcastThread");
+
+        Thread[] threads = new Thread[] {receiverThread, broadcastThread};
+        initSignalHandlers(logBuffer, socket, threads);
+
+        receiverThread.start();
+        broadcastThread.start();
 
         // After a process finishes broadcasting,
         // it waits forever for the delivery of messages.
@@ -129,54 +122,4 @@ public class Main {
             Thread.sleep(60 * 60 * 1000);
         }
     }
-
-//    private static void perfectLinkMain(String[] args) throws Exception{
-//        Parser parser = new Parser(args);
-//        parser.parse();
-//
-//        initSignalHandlers();
-//
-//        // read config
-//        String cfgPath = parser.config();
-//        Integer[] configInfo = getPerfectLinkConfigInfo(cfgPath);
-//        Integer numberOfMessages = configInfo[0];
-//        Integer receiverId = configInfo[1];
-//
-//        if (receiverId == null || numberOfMessages == null) {
-//            System.err.println("Config file parsed incorrectly.");
-//            System.exit(1);
-//        }
-//
-//        if (receiverId < 0 || receiverId > parser.hosts().size()) {
-//            System.err.println("The receiving process defined in config is out of range");
-//            System.exit(1);
-//        }
-//
-//        /* sender & receiver logic */
-//        // Create a HashMap from Integer ID to a pair (IP address, Port)
-//        HashMap<Integer, SimpleEntry<InetAddress, Integer>> idToAddressPort = new HashMap<>();
-//
-//        for (Host host : parser.hosts()) {
-//            idToAddressPort.put(host.getId(), new SimpleEntry<>(InetAddress.getByName(host.getIp()), host.getPort()));
-//        }
-//
-//        System.out.println("Shut Down Hook Attached.");
-//
-//        PerfectLink link = new PerfectLink(idToAddressPort, receiverId, parser.myId(), parser.output(), numberOfMessages);
-//        if (parser.myId() == receiverId) {
-//            link.perfectReceiver.receive();
-//        } else {
-//            link.perfectSender.sendMessages(receiverId);
-//        }
-//
-////        link.shutdown(); // only when using threads in the link
-//        System.exit(0);
-//
-//        // After a process finishes broadcasting,
-//        // it waits forever for the delivery of messages.
-//        while (true) {
-//            // Sleep for 1 hour
-//            Thread.sleep(60 * 60 * 1000);
-//        }
-//    }
 }

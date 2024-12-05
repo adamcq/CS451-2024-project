@@ -28,7 +28,6 @@ public class BEB {
     private final int INCREMENT = 1;
     int MAX_ACK_WAIT_TIME = 200;
     private LogBuffer logBuffer;
-    String outputPath;
     long messagesSent;
     long acksSent;
     DatagramSocket socket;
@@ -43,7 +42,7 @@ public class BEB {
     private AtomicLong rtt = new AtomicLong(MAX_ACK_WAIT_TIME);
     AtomicInteger ownMessagesDelivered;
 
-    public BEB(HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort, int processId, LogBuffer logBuffer, int numberOfMessages) {
+    public BEB(HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort, int processId, LogBuffer logBuffer, DatagramSocket socket, int numberOfMessages) {
         this.numberOfMessages = numberOfMessages;
         this.logBuffer = logBuffer;
         this.processId = processId;
@@ -51,40 +50,14 @@ public class BEB {
         this.numberOfHosts = idToAddressPort.size();
 
         this.urbDelivered = new MemoryFriendlyBitSet(this.numberOfHosts, numberOfMessages);
-
-        // init socket
-        InetAddress broadcasterAddress = idToAddressPort.get(processId).getKey();
-        int broadcasterPort = idToAddressPort.get(processId).getValue();
-
-        try {
-            socket = new DatagramSocket(broadcasterPort, broadcasterAddress); // this works for both sender and receiver, because we put senderId == receiverId for receiver in Main
-        } catch (SocketException e) {
-            System.err.println("Creating receiver socket failed. Socket is USED!!!\n" + e.getMessage());
-            throw new RuntimeException(e);
-        }
-
-        // log Mutex
-        logMutex = new ReentrantLock();
-
-        // Messages to broadcast
+        this.logMutex = new ReentrantLock();
         this.toBroadcast = new ConcurrentHashMap<>();
-        // start receiver
-        Thread receiverThread = new Thread(this::receive, "ReceiverThread");
-        receiverThread.start();
 
-        // start broadcast
-        Thread broadcastThread = new Thread(this::broadcast, "BroadcastThread");
-        broadcastThread.start();
-
-        // add socket shutdown hook
+        // add DEBUG shutdown hook TODO remove this
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("Inside Socket Shutdown Hook");
             System.out.println("Messages Sent " + messagesSent);
             System.out.println("Acks Sent " + acksSent);
-            broadcastThread.interrupt();
-            receiverThread.interrupt();
-            if (socket != null && !socket.isClosed())
-                socket.close();
         }));
     }
 
