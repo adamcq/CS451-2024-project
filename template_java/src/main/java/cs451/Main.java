@@ -20,11 +20,12 @@ public class Main {
         System.out.println("Writing output.");
     }
 
-    private static void initSignalHandlers() {
+    private static void initSignalHandlers(LogBuffer logBuffer) {
         Runtime.getRuntime().addShutdownHook(new Thread() {
             @Override
             public void run() {
                 handleSignal();
+                logBuffer.close();
             }
         });
     }
@@ -70,7 +71,7 @@ public class Main {
                 configInfo[0] = Integer.parseInt(line);
             }
         } catch (IOException e) {
-            System.err.println("Problem with the config file!");
+            System.err.println("Problem with the config file! " + e.getMessage());
             return configInfo;
         }
 
@@ -85,8 +86,6 @@ public class Main {
     private static void BEBMain(String[] args) throws Exception{
         Parser parser = new Parser(args);
         parser.parse();
-
-        initSignalHandlers();
 
         // read config
         String cfgPath = parser.config();
@@ -106,7 +105,17 @@ public class Main {
             idToAddressPort.put(host.getId(), new SimpleEntry<>(InetAddress.getByName(host.getIp()), host.getPort()));
         }
 
-        BEB bestEffortBroadcast = new BEB(idToAddressPort, parser.myId(), parser.output(), numberOfMessages);
+        // init log buffer
+        LogBuffer logBuffer;
+        try {
+            logBuffer = new LogBuffer(parser.output());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        initSignalHandlers(logBuffer);
+
+        BEB bestEffortBroadcast = new BEB(idToAddressPort, parser.myId(), logBuffer, numberOfMessages);
 //        new Thread(bestEffortBroadcast::receive).start();
 //        new Thread(bestEffortBroadcast::broadcast).start();
 
@@ -121,53 +130,53 @@ public class Main {
         }
     }
 
-    private static void perfectLinkMain(String[] args) throws Exception{
-        Parser parser = new Parser(args);
-        parser.parse();
-
-        initSignalHandlers();
-
-        // read config
-        String cfgPath = parser.config();
-        Integer[] configInfo = getPerfectLinkConfigInfo(cfgPath);
-        Integer numberOfMessages = configInfo[0];
-        Integer receiverId = configInfo[1];
-
-        if (receiverId == null || numberOfMessages == null) {
-            System.err.println("Config file parsed incorrectly.");
-            System.exit(1);
-        }
-
-        if (receiverId < 0 || receiverId > parser.hosts().size()) {
-            System.err.println("The receiving process defined in config is out of range");
-            System.exit(1);
-        }
-
-        /* sender & receiver logic */
-        // Create a HashMap from Integer ID to a pair (IP address, Port)
-        HashMap<Integer, SimpleEntry<InetAddress, Integer>> idToAddressPort = new HashMap<>();
-
-        for (Host host : parser.hosts()) {
-            idToAddressPort.put(host.getId(), new SimpleEntry<>(InetAddress.getByName(host.getIp()), host.getPort()));
-        }
-
-        System.out.println("Shut Down Hook Attached.");
-
-        PerfectLink link = new PerfectLink(idToAddressPort, receiverId, parser.myId(), parser.output(), numberOfMessages);
-        if (parser.myId() == receiverId) {
-            link.perfectReceiver.receive();
-        } else {
-            link.perfectSender.sendMessages(receiverId);
-        }
-
-//        link.shutdown(); // only when using threads in the link
-        System.exit(0);
-
-        // After a process finishes broadcasting,
-        // it waits forever for the delivery of messages.
-        while (true) {
-            // Sleep for 1 hour
-            Thread.sleep(60 * 60 * 1000);
-        }
-    }
+//    private static void perfectLinkMain(String[] args) throws Exception{
+//        Parser parser = new Parser(args);
+//        parser.parse();
+//
+//        initSignalHandlers();
+//
+//        // read config
+//        String cfgPath = parser.config();
+//        Integer[] configInfo = getPerfectLinkConfigInfo(cfgPath);
+//        Integer numberOfMessages = configInfo[0];
+//        Integer receiverId = configInfo[1];
+//
+//        if (receiverId == null || numberOfMessages == null) {
+//            System.err.println("Config file parsed incorrectly.");
+//            System.exit(1);
+//        }
+//
+//        if (receiverId < 0 || receiverId > parser.hosts().size()) {
+//            System.err.println("The receiving process defined in config is out of range");
+//            System.exit(1);
+//        }
+//
+//        /* sender & receiver logic */
+//        // Create a HashMap from Integer ID to a pair (IP address, Port)
+//        HashMap<Integer, SimpleEntry<InetAddress, Integer>> idToAddressPort = new HashMap<>();
+//
+//        for (Host host : parser.hosts()) {
+//            idToAddressPort.put(host.getId(), new SimpleEntry<>(InetAddress.getByName(host.getIp()), host.getPort()));
+//        }
+//
+//        System.out.println("Shut Down Hook Attached.");
+//
+//        PerfectLink link = new PerfectLink(idToAddressPort, receiverId, parser.myId(), parser.output(), numberOfMessages);
+//        if (parser.myId() == receiverId) {
+//            link.perfectReceiver.receive();
+//        } else {
+//            link.perfectSender.sendMessages(receiverId);
+//        }
+//
+////        link.shutdown(); // only when using threads in the link
+//        System.exit(0);
+//
+//        // After a process finishes broadcasting,
+//        // it waits forever for the delivery of messages.
+//        while (true) {
+//            // Sleep for 1 hour
+//            Thread.sleep(60 * 60 * 1000);
+//        }
+//    }
 }

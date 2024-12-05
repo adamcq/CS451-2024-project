@@ -43,21 +43,14 @@ public class BEB {
     private AtomicLong rtt = new AtomicLong(MAX_ACK_WAIT_TIME);
     AtomicInteger ownMessagesDelivered;
 
-    public BEB(HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort, int processId, String outputPath, int numberOfMessages) {
+    public BEB(HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort, int processId, LogBuffer logBuffer, int numberOfMessages) {
         this.numberOfMessages = numberOfMessages;
-        this.outputPath = outputPath;
+        this.logBuffer = logBuffer;
         this.processId = processId;
         this.idToAddressPort = idToAddressPort;
         this.numberOfHosts = idToAddressPort.size();
 
-        this.urbDelivered = new MemoryFriendlyBitSet(this.numberOfHosts, numberOfMessages);;
-
-        // init log buffer
-        try {
-            this.logBuffer = new LogBuffer(outputPath);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        this.urbDelivered = new MemoryFriendlyBitSet(this.numberOfHosts, numberOfMessages);
 
         // init socket
         InetAddress broadcasterAddress = idToAddressPort.get(processId).getKey();
