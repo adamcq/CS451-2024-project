@@ -2,3 +2,4 @@
 VM
 example/output
 *.output
+/template_java/fifo

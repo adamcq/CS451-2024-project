@@ -1,12 +1,14 @@
 package cs451;
 
+import cs451.Message.Message;
+import cs451.Message.MessageAcker;
+import cs451.Message.MessageHashUtil;
+
 import java.io.IOException;
 import java.net.*;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
@@ -16,20 +18,17 @@ public class BEB {
     private int numberOfMessages;
     private HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort;
     private final int processId;
-    private String outputPath;
-    private PerfectLink[] perfectLinks;
 //    ExecutorService executor;
 
     // PERFECT SENDER ARGS
 
     int numberOfBatches;
     int MIN_WINDOW_SIZE = 1;
-    private final int AWAIT_CUT_OFF_THRESHOLD = 1;
-    private int toAdd;
     private final int BATCH_SIZE = 8;
     private final int INCREMENT = 1;
     int MAX_ACK_WAIT_TIME = 200;
     private LogBuffer logBuffer;
+    String outputPath;
     long messagesSent;
     long acksSent;
     DatagramSocket socket;
@@ -41,7 +40,6 @@ public class BEB {
     private final MemoryFriendlyBitSet urbDelivered;
     private int UDP_PACKET_SIZE = 512;
     private final int numberOfHosts;
-//    private long rtt = MAX_ACK_WAIT_TIME;
     private AtomicLong rtt = new AtomicLong(MAX_ACK_WAIT_TIME);
     AtomicInteger ownMessagesDelivered;
 
@@ -201,7 +199,7 @@ public class BEB {
 //            System.out.println();
 
             // reset
-            ownMessagesDelivered.set(0); // TODO this will hold logic for how many to send
+//            ownMessagesDelivered.set(0); // TODO this will hold logic for how many to send
 
             // Generate & add newToAdd messages
             for (int i = 0; i < newToAdd; i++) {
@@ -219,7 +217,7 @@ public class BEB {
             }
 
             // Broadcast
-            int counter = 0;
+//            int counter = 0;
             for (Map.Entry<Long, MessageAcker> entry : toBroadcast.entrySet()) {
                 for (Map.Entry<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> addressPort : idToAddressPort.entrySet()){
                     if (!entry.getValue().isAcked(addressPort.getKey())) {
@@ -228,14 +226,14 @@ public class BEB {
                     }
                 }
                 // sleep
-                if ((++counter) %5==0) {
+//                if ((++counter) %5==0) {
                     try {
                         Thread.sleep(broadcast_timeout);
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
-                    counter = 0;
-                }
+//                    counter = 0;
+//                }
             }
 
             // TODO Logic about how many new messages to add next time based on the delivery rate
@@ -246,7 +244,8 @@ public class BEB {
             // TODO this could be faulty
 
                         //simple logic to add new messages
-            newToAdd = ownMessagesDelivered.get() != 0 ? 1 : 0; // only send the next message if old one was delivered
+            newToAdd = ownMessagesDelivered.get() - lastNewAdded + 1; // only send the next message if old one was delivered
+
 
 //            // semi-advanced logic
 //            if (ownMessagesDelivered.get() > 50) { // case sending too fast
@@ -490,7 +489,8 @@ public class BEB {
     private void markUrbDelivered(int senderId, int batchNumber, int[] payload) {
 //        System.out.println("URB Delivering " + senderId + " " + batchNumber + " " + Arrays.toString(payload));
         if (!urbDelivered.isSet(senderId, batchNumber)) {
-            ownMessagesDelivered.getAndIncrement();
+            if (processId == senderId)
+                ownMessagesDelivered.getAndIncrement();
             for (int number : payload) {
                 logBuffer.log("d " + senderId + " " + number);
             }
