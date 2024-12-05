@@ -15,9 +15,8 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class BEB {
     // BEB ARGS
-    private int numberOfMessages;
-    private HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort;
-    private final int processId;
+    private RunConfig runConfig;
+
 //    ExecutorService executor;
 
     // PERFECT SENDER ARGS
@@ -27,10 +26,8 @@ public class BEB {
     private final int BATCH_SIZE = 8;
     private final int INCREMENT = 1;
     int MAX_ACK_WAIT_TIME = 200;
-    private LogBuffer logBuffer;
     long messagesSent;
     long acksSent;
-    DatagramSocket socket;
     enum Phase {SLOW_START, CONGESTION_AVOIDANCE}
     ReentrantLock logMutex;
 
@@ -38,18 +35,13 @@ public class BEB {
     ConcurrentHashMap<Long, MessageAcker> toBroadcast; // (senderId, messageId) message hash to (Message, ackedSet)
     private final MemoryFriendlyBitSet urbDelivered;
     private int UDP_PACKET_SIZE = 512;
-    private final int numberOfHosts;
     private AtomicLong rtt = new AtomicLong(MAX_ACK_WAIT_TIME);
     AtomicInteger ownMessagesDelivered;
 
-    public BEB(HashMap<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> idToAddressPort, int processId, LogBuffer logBuffer, DatagramSocket socket, int numberOfMessages) {
-        this.numberOfMessages = numberOfMessages;
-        this.logBuffer = logBuffer;
-        this.processId = processId;
-        this.idToAddressPort = idToAddressPort;
-        this.numberOfHosts = idToAddressPort.size();
+    public BEB(RunConfig runConfig) {
+        this.runConfig = runConfig;
 
-        this.urbDelivered = new MemoryFriendlyBitSet(this.numberOfHosts, numberOfMessages);
+        this.urbDelivered = new MemoryFriendlyBitSet(runConfig.getNumberOfHosts(), runConfig.getNumberOfMessages());
         this.logMutex = new ReentrantLock();
         this.toBroadcast = new ConcurrentHashMap<>();
 
@@ -71,7 +63,7 @@ public class BEB {
         int[] data = message.getData();
         for (int i = 0; i < data.length; i++)
             buffer.putInt(data[i]);
-        buffer.putInt(processId);
+        buffer.putInt(runConfig.getProcessId());
         buffer.putLong(System.currentTimeMillis()); // TODO change the broadcastTime
 
         byte[] sendData = buffer.array();
@@ -80,9 +72,9 @@ public class BEB {
 
         // log & send the packet
         try {
-            assert socket != null : "Broadcast Socket is null in sendBatch";
+            assert runConfig.getSocket() != null : "Broadcast Socket is null in sendBatch";
             // TODO log when creating the message (PREVIOUSLY LOGGED HERE)
-            socket.send(sendPacket);
+            runConfig.getSocket().send(sendPacket);
             messagesSent++;
         } catch (AssertionError e) {
             System.out.println(e.getMessage());
@@ -90,8 +82,8 @@ public class BEB {
         } catch (Exception e) {
             e.printStackTrace();
             System.err.println("Failed to send batch number " + message.getBatchNumber() + ": " + e.getMessage());
-            if (socket != null && !socket.isClosed()) {
-                socket.close();
+            if (runConfig.getSocket() != null && !runConfig.getSocket().isClosed()) {
+                runConfig.getSocket().close();
             }
             System.exit(1);
         }
@@ -102,7 +94,7 @@ public class BEB {
             // log the broadcast
             try {
                 logMutex.lock();
-                logBuffer.log("b " + number);
+                runConfig.getLogBuffer().log("b " + number);
             } finally {
                 logMutex.unlock();
             }
@@ -116,20 +108,20 @@ public class BEB {
         int newToAdd = 1; // number of new messages to add
         Integer lastNewAdded = 0;
 
-        int[] ackedCount = new int[this.numberOfHosts]; // TODO the logic with ackedCount is flawed - it can be 0 also during execution
-        Deque<Integer>[] batches = new ArrayDeque[this.numberOfHosts];
+        int[] ackedCount = new int[runConfig.getNumberOfHosts()]; // TODO the logic with ackedCount is flawed - it can be 0 also during execution
+        Deque<Integer>[] batches = new ArrayDeque[runConfig.getNumberOfHosts()];
 
-        for (int i = 0; i < this.numberOfHosts; i++)
+        for (int i = 0; i < runConfig.getNumberOfHosts(); i++)
             batches[i] = new ArrayDeque<>();
 
-        Phase[] phases = new Phase[this.numberOfHosts];
+        Phase[] phases = new Phase[runConfig.getNumberOfHosts()];
         Arrays.fill(phases, Phase.SLOW_START);
 
-        int[] windowSize = new int[this.numberOfHosts];
+        int[] windowSize = new int[runConfig.getNumberOfHosts()];
         Arrays.fill(windowSize, MIN_WINDOW_SIZE);
 
-        int numberOfBatches = numberOfMessages / BATCH_SIZE;
-        if (numberOfMessages % BATCH_SIZE != 0)
+        int numberOfBatches = runConfig.getNumberOfMessages() / BATCH_SIZE;
+        if (runConfig.getNumberOfMessages() % BATCH_SIZE != 0)
             numberOfBatches++;
 
         this.numberOfBatches = numberOfBatches;
@@ -152,7 +144,7 @@ public class BEB {
                 if (lastNewAdded == numberOfBatches)
                     break;
 
-                Message message = Message.createMessage(lastNewAdded++, numberOfMessages, processId);
+                Message message = Message.createMessage(lastNewAdded++, runConfig.getNumberOfMessages(), runConfig.getProcessId());
                 logMessage(message);
 
                 // TODO idea - have a separate queue for my own messages (treat them differently)
@@ -165,9 +157,10 @@ public class BEB {
             // Broadcast
 //            int counter = 0;
             for (Map.Entry<Long, MessageAcker> entry : toBroadcast.entrySet()) {
-                for (Map.Entry<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> addressPort : idToAddressPort.entrySet()){
+                for (Map.Entry<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> addressPort : runConfig.getIdToAddressPort().entrySet()){
                     if (!entry.getValue().isAcked(addressPort.getKey())) {
                         sendMessage(entry.getValue().getMessage(), addressPort.getValue().getKey(), addressPort.getValue().getValue());
+                        messagesSent++;
 //                int recommendedWindowSize = getRecommendedWindowSize(); // optional
                     }
                 }
@@ -236,7 +229,7 @@ public class BEB {
         //  mark ACK
         //  reliably broadcast ACK
         //  if > N / 2 + 1 have ACKed, remove from batches
-        if (senderId == processId && relayId != processId) { // TODO verify if this is the best strategy for rtt
+        if (senderId == runConfig.getProcessId() && relayId != runConfig.getProcessId()) { // TODO verify if this is the best strategy for rtt
             rtt.set(Math.min(MAX_ACK_WAIT_TIME, Math.max(rtt.get(), System.currentTimeMillis() - sendTime)));
 
         }
@@ -249,7 +242,7 @@ public class BEB {
 //            System.out.println("messageHash " + messageHash + " decoded " + MessageHashUtil.extractSenderId(messageHash) + " " + MessageHashUtil.extractMessageNumber(messageHash) + " numberAcked " + numberAcked + " ackedSet " + toBroadcast.get(messageHash).getAcked().toString());
 
             // urbDeliver
-            if (numberAcked > numberOfHosts / 2) {
+            if (numberAcked > runConfig.getNumberOfHosts() / 2) {
                 int[] payload = new int[(length - 21) / 4];
                 for (int i = 0; i < payload.length; i++) {
                     payload[i] = ((data[i*4 + 9] & 0xFF) << 24) |
@@ -271,7 +264,7 @@ public class BEB {
             int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
 
             // remove
-            if (numberAcked == numberOfHosts) {
+            if (numberAcked == runConfig.getNumberOfHosts()) {
                 toBroadcast.remove(messageHash);
             }
         }
@@ -325,7 +318,7 @@ public class BEB {
 //            System.out.println("messageHash " + messageHash + " decoded " + MessageHashUtil.extractSenderId(messageHash) + " " + MessageHashUtil.extractMessageNumber(messageHash) + " numberAcked " + numberAcked + " ackedSet " + toBroadcast.get(messageHash).getAcked().toString());
 
             // urbDeliver
-            if (numberAcked > numberOfHosts / 2) {
+            if (numberAcked > runConfig.getNumberOfHosts() / 2) {
                 try {
                     logMutex.lock();
                     markUrbDelivered(senderId, batchNumber, payload);  // Process each number directly
@@ -339,7 +332,7 @@ public class BEB {
             int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
 
             // remove
-            if (numberAcked == numberOfHosts) {
+            if (numberAcked == runConfig.getNumberOfHosts()) {
                 toBroadcast.remove(messageHash);
             }
         }
@@ -379,7 +372,7 @@ public class BEB {
             while (true) {
                 // Receive the packet
                 try {
-                    socket.receive(receivePacket);
+                    runConfig.getSocket().receive(receivePacket);
 
                     byte[] data = receivePacket.getData();
                     int length = receivePacket.getLength();
@@ -403,9 +396,9 @@ public class BEB {
             System.exit(2);
         }
          finally {
-            if (socket != null && !socket.isClosed()) {
+            if (runConfig.getSocket() != null && !runConfig.getSocket().isClosed()) {
                 System.out.println("Closing socket...");
-                socket.close();
+                runConfig.getSocket().close();
             }
         }
     }
@@ -415,16 +408,16 @@ public class BEB {
         ackData[0] = 1;
 
         // change relayId to mine
-        ackData[ackLength - 12] = (byte) ((processId >> 24) & 0xFF);
-        ackData[ackLength - 11] = (byte) ((processId >> 16) & 0xFF);
-        ackData[ackLength - 10] = (byte) ((processId >> 8) & 0xFF);
-        ackData[ackLength - 9] = (byte) (processId & 0xFF);
+        ackData[ackLength - 12] = (byte) ((runConfig.getProcessId() >> 24) & 0xFF);
+        ackData[ackLength - 11] = (byte) ((runConfig.getProcessId() >> 16) & 0xFF);
+        ackData[ackLength - 10] = (byte) ((runConfig.getProcessId() >> 8) & 0xFF);
+        ackData[ackLength - 9] = (byte) (runConfig.getProcessId() & 0xFF);
 
         // Create ACK packet to send data back to the relay's address
         DatagramPacket ackPacket = new DatagramPacket(ackData, ackLength, relayAddress, relayPort);
 
         try {
-            socket.send(ackPacket);
+            runConfig.getSocket().send(ackPacket);
             acksSent++;
         } catch (IOException e) {
             System.err.println("Failed to send ACK from relay port " + relayPort + ": " + e.getMessage());
@@ -436,13 +429,13 @@ public class BEB {
 //        System.out.println("URB Delivering " + senderId + " " + batchNumber + " " + Arrays.toString(payload));
         if (!urbDelivered.isSet(senderId, batchNumber)) {
             urbDelivered.set(senderId, batchNumber);
-            if (processId == senderId)
+            if (runConfig.getProcessId() == senderId)
                 ownMessagesDelivered.getAndIncrement();
 
             // FIFO deliver loop logic
             while (batchNumber == 1 || (batchNumber > 1 && isUrbDelivered(senderId, batchNumber - 1) && isUrbDelivered(senderId, batchNumber))) {
                 for (int number : payload) {
-                    logBuffer.log("d " + senderId + " " + number);
+                    runConfig.getLogBuffer().log("d " + senderId + " " + number);
                 }
                 batchNumber++;
             }

@@ -77,40 +77,15 @@ public class Main {
         }
 
         /* sender & receiver logic */
-        // Create a HashMap from Integer ID to a pair (IP address, Port)
-        HashMap<Integer, SimpleEntry<InetAddress, Integer>> idToAddressPort = new HashMap<>();
-
-        for (Host host : parser.hosts()) {
-            idToAddressPort.put(host.getId(), new SimpleEntry<>(InetAddress.getByName(host.getIp()), host.getPort()));
-        }
-
-        // init log buffer
-        LogBuffer logBuffer;
-        try {
-            logBuffer = new LogBuffer(parser.output());
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-
-        // init socket
-        DatagramSocket socket;
-        InetAddress broadcasterAddress = idToAddressPort.get(parser.myId()).getKey();
-        int broadcasterPort = idToAddressPort.get(parser.myId()).getValue();
-
-        try {
-            socket = new DatagramSocket(broadcasterPort, broadcasterAddress); // this works for both sender and receiver, because we put senderId == receiverId for receiver in Main
-        } catch (SocketException e) {
-            System.err.println("Creating receiver socket failed. Socket is USED!!!\n" + e.getMessage());
-            throw new RuntimeException(e);
-        }
+        RunConfig runConfig = new RunConfig(parser, numberOfMessages);
 
         // BEB
-        BEB bestEffortBroadcast = new BEB(idToAddressPort, parser.myId(), logBuffer, socket, numberOfMessages);
+        BEB bestEffortBroadcast = new BEB(runConfig);
         Thread receiverThread = new Thread(bestEffortBroadcast::receive, "ReceiverThread");
         Thread broadcastThread = new Thread(bestEffortBroadcast::broadcast, "BroadcastThread");
 
         Thread[] threads = new Thread[] {receiverThread, broadcastThread};
-        initSignalHandlers(logBuffer, socket, threads);
+        initSignalHandlers(runConfig.getLogBuffer(), runConfig.getSocket(), threads);
 
         receiverThread.start();
         broadcastThread.start();
