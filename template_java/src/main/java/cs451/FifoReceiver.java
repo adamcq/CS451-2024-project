@@ -8,6 +8,9 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.SocketTimeoutException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
@@ -18,6 +21,8 @@ public class FifoReceiver {
     ReentrantLock logMutex;
     AtomicInteger ownMessagesDelivered;
     MemoryFriendlyBitSet urbDelivered;
+    HashMap<Long, int[]> waitingToBeDelivered;
+    int[] nextBatchToDeliver;
     long acksSent;
 
     public FifoReceiver(RunConfig runConfig, ConcurrentHashMap<Long, MessageAcker> toBroadcast, ReentrantLock logMutex, AtomicInteger ownMessagesDelivered) {
@@ -25,6 +30,9 @@ public class FifoReceiver {
         this.toBroadcast = toBroadcast;
         this.logMutex = logMutex;
         this.ownMessagesDelivered = ownMessagesDelivered;
+        waitingToBeDelivered = new HashMap<>();
+        nextBatchToDeliver = new int[runConfig.getNumberOfHosts()];
+        Arrays.fill(nextBatchToDeliver, 1);
 
         this.urbDelivered = new MemoryFriendlyBitSet(runConfig.getNumberOfHosts(), runConfig.getNumberOfMessages());
         // add DEBUG shutdown hook TODO remove this
@@ -149,7 +157,7 @@ public class FifoReceiver {
                             ((data[i*4 + 11] & 0xFF) << 8) |
                             (data[i*4 + 12] & 0xFF);
                 }
-                markUrbDelivered(senderId, batchNumber, payload);  // Process each number directly
+                markUrbDelivered(senderId, batchNumber, messageHash, payload);  // Process each number directly
             }
         }
 
@@ -223,7 +231,7 @@ public class FifoReceiver {
 
             // urbDeliver
             if (numberAcked > runConfig.getNumberOfHosts() / 2) {
-                markUrbDelivered(senderId, batchNumber, payload);  // Process each number directly
+                markUrbDelivered(senderId, batchNumber, messageHash, payload);  // Process each number directly
             }
         }
 
@@ -260,24 +268,64 @@ public class FifoReceiver {
         return count;
     }
 
-    private void markUrbDelivered(int senderId, int batchNumber, int[] payload) {
+//    private void markUrbDelivered(int senderId, int batchNumber, int[] payload) {
+////        System.out.println("URB Delivering " + senderId + " " + batchNumber + " " + Arrays.toString(payload));
+//        if (!urbDelivered.isSet(senderId, batchNumber)) {
+//            urbDelivered.set(senderId, batchNumber);
+//            if (runConfig.getProcessId() == senderId)
+//                ownMessagesDelivered.getAndIncrement();
+//
+//            // FIFO deliver loop logic
+//            try {
+//                logMutex.lock();
+//                while (batchNumber == 1 || (batchNumber > 1 && isUrbDelivered(senderId, batchNumber - 1) && isUrbDelivered(senderId, batchNumber))) {
+//                    for (int number : payload) {
+//                        runConfig.getLogBuffer().log("d " + senderId + " " + number);
+//                    }
+//                    batchNumber++;
+//                }
+//            } finally {
+//                logMutex.unlock();
+//            }
+//        }
+//    }
+
+    private void markUrbDelivered(int senderId, int batchNumber, long messageHash, int[] payload) {
 //        System.out.println("URB Delivering " + senderId + " " + batchNumber + " " + Arrays.toString(payload));
         if (!urbDelivered.isSet(senderId, batchNumber)) {
             urbDelivered.set(senderId, batchNumber);
             if (runConfig.getProcessId() == senderId)
                 ownMessagesDelivered.getAndIncrement();
 
-            // FIFO deliver loop logic
-            try {
-                logMutex.lock();
-                while (batchNumber == 1 || (batchNumber > 1 && isUrbDelivered(senderId, batchNumber - 1) && isUrbDelivered(senderId, batchNumber))) {
+            // FIFO deliver logic
+            if (batchNumber != nextBatchToDeliver[senderId - 1]) {
+                waitingToBeDelivered.put(messageHash, payload);
+            }
+            else {
+                try {
+                    // log this
+                    logMutex.lock();
                     for (int number : payload) {
                         runConfig.getLogBuffer().log("d " + senderId + " " + number);
                     }
-                    batchNumber++;
+                    waitingToBeDelivered.remove(messageHash);
+                    nextBatchToDeliver[senderId - 1]++;
+
+                    // log all waiting
+                    while (true) {
+                        messageHash = MessageHashUtil.createMessageHash(senderId, nextBatchToDeliver[senderId - 1]);
+                        if (!waitingToBeDelivered.containsKey(messageHash))
+                            break;
+                        payload = waitingToBeDelivered.get(messageHash);
+                        for (int number : payload) {
+                            runConfig.getLogBuffer().log("d " + senderId + " " + number);
+                        }
+                        waitingToBeDelivered.remove(messageHash);
+                        nextBatchToDeliver[senderId - 1]++;
+                    }
+                } finally {
+                    logMutex.unlock();
                 }
-            } finally {
-                logMutex.unlock();
             }
         }
     }
