@@ -61,26 +61,6 @@ public class BEB {
         }));
     }
 
-
-    /**
-     * @param lastCreated the Batch Number of the last created Batch
-     * @return new Message
-     */
-    private Message createMessage(int lastCreated) {
-        int[] data = new int[Math.min(8, numberOfMessages - lastCreated * 8)];
-        for (int i = 0; i < data.length; i++) {
-            data[i] = lastCreated * 8 + i + 1;
-        }
-
-        return new Message(
-                (byte) 0,
-                processId,
-                lastCreated+1,
-                data,
-                System.currentTimeMillis()
-        );
-    }
-
     private void sendMessage(Message message, InetAddress receiverAddress, int receiverPort) {
         // Prepare the packet
         ByteBuffer buffer = ByteBuffer.allocate(message.getMessageSize()); // boolean, integer, integer, string payload, long time
@@ -172,7 +152,7 @@ public class BEB {
                 if (lastNewAdded == numberOfBatches)
                     break;
 
-                Message message = createMessage(lastNewAdded++);
+                Message message = Message.createMessage(lastNewAdded++, numberOfMessages, processId);
                 logMessage(message);
 
                 // TODO idea - have a separate queue for my own messages (treat them differently)

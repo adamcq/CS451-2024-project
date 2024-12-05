@@ -17,6 +17,25 @@ public class Message {
         this.broadcastTime = broadcastTime;
     }
 
+    /**
+     * @param lastCreated the Batch Number of the last created Batch
+     * @return new Message
+     */
+    public static Message createMessage(int lastCreated, int numberOfMessages, int processId) {
+        int[] data = new int[Math.min(8, numberOfMessages - lastCreated * 8)];
+        for (int i = 0; i < data.length; i++) {
+            data[i] = lastCreated * 8 + i + 1;
+        }
+
+        return new Message(
+                (byte) 0,
+                processId,
+                lastCreated+1,
+                data,
+                System.currentTimeMillis()
+        );
+    }
+
     public int getMessageSize() {
         // byte type, int senderId, int batchNumber, int[] data, int relayId, long sendTime
         return (Byte.SIZE + Integer.SIZE + Integer.SIZE + Integer.SIZE * data.length + Integer.SIZE + Long.SIZE) / 8;
