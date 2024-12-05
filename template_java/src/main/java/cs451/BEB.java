@@ -15,9 +15,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class BEB {
     // BEB ARGS
-    private RunConfig runConfig;
-
-//    ExecutorService executor;
+    private final RunConfig runConfig;
 
     // PERFECT SENDER ARGS
 
@@ -35,7 +33,6 @@ public class BEB {
     ConcurrentHashMap<Long, MessageAcker> toBroadcast; // (senderId, messageId) message hash to (Message, ackedSet)
     private final MemoryFriendlyBitSet urbDelivered;
     private int UDP_PACKET_SIZE = 512;
-    private AtomicLong rtt = new AtomicLong(MAX_ACK_WAIT_TIME);
     AtomicInteger ownMessagesDelivered;
 
     public BEB(RunConfig runConfig) {
@@ -75,7 +72,6 @@ public class BEB {
             assert runConfig.getSocket() != null : "Broadcast Socket is null in sendBatch";
             // TODO log when creating the message (PREVIOUSLY LOGGED HERE)
             runConfig.getSocket().send(sendPacket);
-            messagesSent++;
         } catch (AssertionError e) {
             System.out.println(e.getMessage());
             System.exit(1);
@@ -133,11 +129,8 @@ public class BEB {
         // Broadcast server
         while (true) {
 //            System.out.println("broadcast adding " + newToAdd + " messages. Last acked " + ownMessagesDelivered.get() + " own messages. toBroadcast=" + toBroadcast.toString());
-            System.out.println("Broadcast log toBroadcast.size=" + toBroadcast.size() + " newToAdd=" + newToAdd + " rtt=" + rtt.get() + " lastNewAdded=" + lastNewAdded + " noBatches=" + numberOfBatches + " ownMessagesDelivered=" + ownMessagesDelivered.get());
+            System.out.println("Broadcast log toBroadcast.size=" + toBroadcast.size() + " newToAdd=" + newToAdd + " lastNewAdded=" + lastNewAdded + " noBatches=" + numberOfBatches + " ownMessagesDelivered=" + ownMessagesDelivered.get());
 //            System.out.println();
-
-            // reset
-//            ownMessagesDelivered.set(0); // TODO this will hold logic for how many to send
 
             // Generate & add newToAdd messages
             for (int i = 0; i < newToAdd; i++) {
@@ -161,7 +154,6 @@ public class BEB {
                     if (!entry.getValue().isAcked(addressPort.getKey())) {
                         sendMessage(entry.getValue().getMessage(), addressPort.getValue().getKey(), addressPort.getValue().getValue());
                         messagesSent++;
-//                int recommendedWindowSize = getRecommendedWindowSize(); // optional
                     }
                 }
                 // sleep
@@ -175,25 +167,9 @@ public class BEB {
 //                }
             }
 
-            // TODO Logic about how many new messages to add next time based on the delivery rate
-            //  also based on toBroadcast size
-            //  it should not be in absolute values, because they can kill processes
-            //  rather compare before vs after (periodically) - if the difference is too big - exponential decrease
-            //  if it is not - additive increase
-            // TODO this could be faulty
-
-                        //simple logic to add new messages
+            //simple logic to add new messages
             newToAdd = ownMessagesDelivered.get() - lastNewAdded + 1; // only send the next message if old one was delivered
 
-
-//            // semi-advanced logic
-//            if (ownMessagesDelivered.get() > 50) { // case sending too fast
-//                newToAdd /= 2;
-//            } else if (lastNewAdded == 1 && ownMessagesDelivered.get() == 0) { // case waiting for other processes to start
-//                newToAdd = 0;
-//            } else {
-//                newToAdd += ownMessagesDelivered.get(); // regular case
-//            }
         }
     }
 
@@ -224,15 +200,6 @@ public class BEB {
                 ((long) (data[length - 3] & 0xFF) << 16) |
                 ((long) (data[length - 2] & 0xFF) << 8) |
                 ((long) (data[length - 1] & 0xFF));
-
-        // TODO mark batch as acked
-        //  mark ACK
-        //  reliably broadcast ACK
-        //  if > N / 2 + 1 have ACKed, remove from batches
-        if (senderId == runConfig.getProcessId() && relayId != runConfig.getProcessId()) { // TODO verify if this is the best strategy for rtt
-            rtt.set(Math.min(MAX_ACK_WAIT_TIME, Math.max(rtt.get(), System.currentTimeMillis() - sendTime)));
-
-        }
 
         long messageHash = MessageHashUtil.createMessageHash(senderId, batchNumber);
         if (!isUrbDelivered(senderId, batchNumber)) {
@@ -337,32 +304,9 @@ public class BEB {
             }
         }
 
-//
-//            int numberAcked = toBroadcast.get(messageHash).addAckFrom(senderId);
-//
-//            // urbDeliver
-//            if (numberAcked > numberOfHosts / 2) {
-//                try {
-//                    logMutex.lock();
-//                    markUrbDelivered(senderId, batchNumber, payload);  // Process each number directly
-//                } finally {
-//                    logMutex.unlock();
-//                }
-//                // TODO remove from toBroadcast
-//                toBroadcast.remove(messageHash);
-//            }
-//        }
-
         // Send ACK
         sendACK(data, length, relayAddress, relayPort);
     }
-
-    // TODO have one receive loop
-    //  this loop will receive data & acks simultaneously
-    //  each message must be modified and contain a bit isAck (e.g. the first bit)
-    //  if it is ack, process it on a separate thread
-    //  if it is a message, process it on a separate thread
-    //  broadcast loop thread and ack processing thread will share resources - timeout must be set & windowsize adjusted
     public void receive() {
         try {
             // Prepare a packet to receive data
@@ -451,15 +395,4 @@ public class BEB {
         }
         return isSet;
     }
-//    private void markDelivered(int senderId, int messageNumber) {
-//        if (!delivered.isSet(senderId, messageNumber)) {
-//            try {
-//                logMutex.lock();
-//                logBuffer.log("d " + senderId + " " + messageNumber);
-//            } finally {
-//                logMutex.unlock();
-//            }
-//            delivered.set(senderId, messageNumber);
-//        }
-//    }
 }
