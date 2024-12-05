@@ -489,13 +489,18 @@ public class BEB {
     private void markUrbDelivered(int senderId, int batchNumber, int[] payload) {
 //        System.out.println("URB Delivering " + senderId + " " + batchNumber + " " + Arrays.toString(payload));
         if (!urbDelivered.isSet(senderId, batchNumber)) {
+            urbDelivered.set(senderId, batchNumber);
             if (processId == senderId)
                 ownMessagesDelivered.getAndIncrement();
-            for (int number : payload) {
-                logBuffer.log("d " + senderId + " " + number);
+
+            // FIFO deliver loop logic
+            while (batchNumber == 1 || (batchNumber > 1 && isUrbDelivered(senderId, batchNumber - 1) && isUrbDelivered(senderId, batchNumber))) {
+                for (int number : payload) {
+                    logBuffer.log("d " + senderId + " " + number);
+                }
+                batchNumber++;
             }
         }
-        urbDelivered.set(senderId, batchNumber);
     }
     private boolean isUrbDelivered(int senderId, int batchNumber) {
         boolean isSet;
