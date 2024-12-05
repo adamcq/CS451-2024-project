@@ -24,6 +24,7 @@ public class FifoReceiver {
         this.runConfig = runConfig;
         this.toBroadcast = toBroadcast;
         this.logMutex = logMutex;
+        this.ownMessagesDelivered = ownMessagesDelivered;
 
         this.urbDelivered = new MemoryFriendlyBitSet(runConfig.getNumberOfHosts(), runConfig.getNumberOfMessages());
         // add DEBUG shutdown hook TODO remove this
