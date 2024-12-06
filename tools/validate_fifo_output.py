@@ -118,21 +118,19 @@ def main():
         print(delivery_error)
       
       # print broadcast summary
-      print('BROADCAST SUMMARY')
       if broadcast_errors:
         print(f'BROADCAST ERROR: sender {sender_id} incorrectly broadcast {len(broadcast_messages)} messages. min: {min_message} max: {max_message}')
       else:
         print(f'BROADCAST SUCCESS: sender {sender_id} correctly broadcast {len(broadcast_messages)} messages. min: {min_message} max: {max_message}')
 
-      # print delivery summary
-      print("DELIVERY SUMMARY:")
-      print("Below is the number of messages delivered from each process: (should be EVENTUALLY equal for all correct processes)")
-      for process_id in delivered:
-        delivered_messages = 0
-        for broadcaster in delivered[process_id]:
-          delivered_messages += len(delivered[process_id][broadcaster])
-        print(f'|{process_id}: {delivered_messages}', end="| ")
-      print()
+  # print delivery summary
+  print("DELIVERY SUMMARY: Below is the number of messages delivered from each process: (should be EVENTUALLY equal for all correct processes)")
+  for process_id in delivered:
+    delivered_messages = 0
+    for broadcaster in delivered[process_id]:
+      delivered_messages += len(delivered[process_id][broadcaster])
+    print(f'|{process_id}: {delivered_messages}', end="| ")
+  print()
 
 
   print()
