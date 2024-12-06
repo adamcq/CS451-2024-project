@@ -17,13 +17,14 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class FifoReceiver {
     private final RunConfig runConfig;
-    ConcurrentHashMap<Long, MessageAcker> toBroadcast;
-    ReentrantLock logMutex;
-    AtomicInteger ownMessagesDelivered;
-    MemoryFriendlyBitSet urbDelivered;
-    HashMap<Long, int[]> waitingToBeDelivered;
-    int[] nextBatchToDeliver;
-    long acksSent;
+    private final ConcurrentHashMap<Long, MessageAcker> toBroadcast;
+    private final ReentrantLock logMutex;
+    private final AtomicInteger ownMessagesDelivered;
+    private final MemoryFriendlyBitSet urbDelivered;
+    private final HashMap<Long, int[]> waitingToBeDelivered;
+    private final int[] nextBatchToDeliver;
+    private long acksSent;
+    private long messagesReceived;
 
     public FifoReceiver(RunConfig runConfig, ConcurrentHashMap<Long, MessageAcker> toBroadcast, ReentrantLock logMutex, AtomicInteger ownMessagesDelivered) {
         this.runConfig = runConfig;
@@ -39,6 +40,7 @@ public class FifoReceiver {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("Inside Receiver Shutdown Hook");
             System.out.println("Acks Sent " + acksSent);
+            System.out.println("Messages Received " + messagesReceived);
         }));
     }
 
@@ -52,6 +54,7 @@ public class FifoReceiver {
                 // Receive the packet
                 try {
                     runConfig.getSocket().receive(receivePacket);
+                    messagesReceived++;
 
                     byte[] data = receivePacket.getData();
                     int length = receivePacket.getLength();
