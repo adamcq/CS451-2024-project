@@ -61,7 +61,6 @@ public class BEB {
         // log & send the packet
         try {
             assert runConfig.getSocket() != null : "Broadcast Socket is null in sendBatch";
-            // TODO log when creating the message (PREVIOUSLY LOGGED HERE)
             runConfig.getSocket().send(sendPacket);
         } catch (AssertionError e) {
             System.out.println(e.getMessage());
@@ -78,7 +77,6 @@ public class BEB {
 
     private void logMessage(Message message) {
         for (int number : message.getData()) {
-            // log the broadcast
             try {
                 logMutex.lock();
                 runConfig.getLogBuffer().log("b " + number);
@@ -93,28 +91,23 @@ public class BEB {
 
         // Initialize broadcast variables
         int newToAdd = 1; // number of new messages to add
-        Integer lastNewAdded = 0;
-
-        Deque<Integer>[] batches = new ArrayDeque[runConfig.getNumberOfHosts()];
-
-        for (int i = 0; i < runConfig.getNumberOfHosts(); i++)
-            batches[i] = new ArrayDeque<>();
+        int lastNewAdded = 0;
 
         int numberOfBatches = runConfig.getNumberOfMessages() / Constants.BATCH_SIZE;
         if (runConfig.getNumberOfMessages() % Constants.BATCH_SIZE != 0)
             numberOfBatches++;
 
         this.numberOfBatches = numberOfBatches;
-        int totalDelivered = 0;
         int broadcast_timeout = 1;
 
         // Broadcast server
         while (true) {
 //            System.out.println("broadcast adding " + newToAdd + " messages. Last acked " + ownMessagesDelivered.get() + " own messages. toBroadcast=" + toBroadcast.toString());
-            System.out.println("Broadcast log toBroadcast.size=" + toBroadcast.size() + " newToAdd=" + newToAdd + " lastNewAdded=" + lastNewAdded + " noBatches=" + numberOfBatches + " ownMessagesDelivered=" + ownMessagesDelivered.get());
+            System.out.println("Broadcast time=" + System.currentTimeMillis() + " toBroadcast.size=" + toBroadcast.size() + " newToAdd=" + newToAdd + " lastNewAdded=" + lastNewAdded + " ownMessagesDelivered=" + ownMessagesDelivered.get() + " messagesSent=" + messagesSent);
 //            System.out.println();
 
-            // Generate & add newToAdd messages
+            // Generate & add newToAdd
+            // messages
             for (int i = 0; i < newToAdd; i++) {
                 if (lastNewAdded == numberOfBatches)
                     break;
