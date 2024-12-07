@@ -22,6 +22,7 @@ public class BEB {
     ReentrantLock logMutex;
     ConcurrentHashMap<Long, MessageAcker> toBroadcast; // (senderId, messageId) message hash to (Message, ackedSet)
     AtomicInteger ownMessagesDelivered;
+    AtomicInteger maxSeenMessage;
 
     public BEB(RunConfig runConfig) {
         this.runConfig = runConfig;
@@ -29,6 +30,7 @@ public class BEB {
         this.logMutex = new ReentrantLock();
         this.toBroadcast = new ConcurrentHashMap<>();
         this.ownMessagesDelivered = new AtomicInteger(0); // TODO this will hold logic for how many to send
+        this.maxSeenMessage = new AtomicInteger(0);
 
         // add DEBUG shutdown hook TODO remove this
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -38,7 +40,7 @@ public class BEB {
     }
 
     public void receive() {
-        new FifoReceiver(runConfig, toBroadcast, logMutex, ownMessagesDelivered).receive();
+        new FifoReceiver(runConfig, toBroadcast, logMutex, ownMessagesDelivered, maxSeenMessage).receive();
     }
 
     private void sendMessage(Message message, InetAddress receiverAddress, int receiverPort) {
@@ -102,8 +104,9 @@ public class BEB {
 
         // Broadcast server
         while (true) {
+//            System.out.println("Broadcast time=" + System.currentTimeMillis() + " toBroadcast.size=" + toBroadcast.size() + " newToAdd=" + newToAdd + " lastNewAdded=" + lastNewAdded + " ownMessagesDelivered=" + ownMessagesDelivered.get() + " messagesSent=" + messagesSent);
+
 //            System.out.println("broadcast adding " + newToAdd + " messages. Last acked " + ownMessagesDelivered.get() + " own messages. toBroadcast=" + toBroadcast.toString());
-            System.out.println("Broadcast time=" + System.currentTimeMillis() + " toBroadcast.size=" + toBroadcast.size() + " newToAdd=" + newToAdd + " lastNewAdded=" + lastNewAdded + " ownMessagesDelivered=" + ownMessagesDelivered.get() + " messagesSent=" + messagesSent);
 //            System.out.println();
 
             // Generate & add newToAdd
@@ -133,17 +136,18 @@ public class BEB {
                 }
                 // sleep
 //                if ((++counter) %5==0) {
-                    try {
-                        Thread.sleep(broadcast_timeout);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
 //                    counter = 0;
 //                }
             }
+            try {
+//                        Thread.sleep(broadcast_timeout);
+                Thread.sleep(0,30000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
 
             //simple logic to add new messages
-            newToAdd = ownMessagesDelivered.get() - lastNewAdded + 1; // only send the next message if old one was delivered
+            newToAdd = maxSeenMessage.get() - lastNewAdded + 4; // only send the next message if old one was delivered
 
         }
     }

@@ -9,7 +9,7 @@ public class MemoryFriendlyBitSet {
     BitSet[][] delivered;
     int[] minWindowIdx;
     int numberOfWindows;
-    private int MAX_WINDOW_SIZE = 64; // 65536; // 2^16
+    private int MAX_WINDOW_SIZE = 1024; // 2^16
 
     public MemoryFriendlyBitSet(int numberOfHosts, int numberOfMessages) {
         minWindowIdx = new int[numberOfHosts];

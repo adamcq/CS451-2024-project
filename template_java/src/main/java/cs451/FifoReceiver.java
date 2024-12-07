@@ -19,17 +19,19 @@ public class FifoReceiver {
     private final ConcurrentHashMap<Long, MessageAcker> toBroadcast;
     private final ReentrantLock logMutex;
     private final AtomicInteger ownMessagesDelivered;
+    private final AtomicInteger maxSeenMessage;
     private final MemoryFriendlyBitSet urbDelivered;
     private final HashMap<Long, int[]> waitingToBeDelivered;
     private final int[] nextBatchToDeliver;
     private long acksSent;
     private long messagesReceived;
 
-    public FifoReceiver(RunConfig runConfig, ConcurrentHashMap<Long, MessageAcker> toBroadcast, ReentrantLock logMutex, AtomicInteger ownMessagesDelivered) {
+    public FifoReceiver(RunConfig runConfig, ConcurrentHashMap<Long, MessageAcker> toBroadcast, ReentrantLock logMutex, AtomicInteger ownMessagesDelivered, AtomicInteger maxSeenMessage) {
         this.runConfig = runConfig;
         this.toBroadcast = toBroadcast;
         this.logMutex = logMutex;
         this.ownMessagesDelivered = ownMessagesDelivered;
+        this.maxSeenMessage = maxSeenMessage;
         waitingToBeDelivered = new HashMap<>();
         nextBatchToDeliver = new int[runConfig.getNumberOfHosts()];
         Arrays.fill(nextBatchToDeliver, 1);
@@ -119,6 +121,9 @@ public class FifoReceiver {
                 ((data[7] & 0xFF) << 8) |
                 (data[8] & 0xFF);
 
+//        if (batchNumber > maxSeenMessage.get())
+//            maxSeenMessage.set(batchNumber);
+
         int relayId = ((data[length - 12] & 0xFF) << 24) |
                 ((data[length - 11] & 0xFF) << 16) |
                 ((data[length - 10] & 0xFF) << 8) |
@@ -186,6 +191,9 @@ public class FifoReceiver {
                 ((data[6] & 0xFF) << 16) |
                 ((data[7] & 0xFF) << 8) |
                 (data[8] & 0xFF);
+
+        if (batchNumber > maxSeenMessage.get())
+            maxSeenMessage.set(batchNumber);
 
         int[] payload = new int[(length - 29) / 4];
         for (int i = 0; i < payload.length; i++) {
