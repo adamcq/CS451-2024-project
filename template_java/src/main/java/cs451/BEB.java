@@ -121,7 +121,7 @@ public class BEB {
                 // TODO idea - have a separate queue for my own messages (treat them differently)
                 toBroadcast.put(
                         MessageHashUtil.createMessageHash(message),
-                        new MessageAcker(message)
+                        new MessageAcker(message, runConfig)
                 );
             }
 

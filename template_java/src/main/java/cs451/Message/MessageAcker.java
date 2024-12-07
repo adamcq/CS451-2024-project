@@ -1,20 +1,26 @@
 package cs451.Message;
 
+import cs451.RunConfig;
+
+import java.util.BitSet;
 import java.util.HashSet;
 
 public class MessageAcker {
     private Message message;
-    private HashSet<Integer> acked;
+//    private HashSet<Integer> acked;
+    private BitSet acked;
     private int ackedCount;
 
-    public MessageAcker(Message message) {
+    public MessageAcker(Message message, RunConfig runConfig) {
         this.message = message;
-        this.acked = new HashSet<>();
+//        this.acked = new HashSet<>();
+        this.acked = new BitSet(runConfig.getNumberOfHosts());
         ackedCount = 0;
     }
 
     public boolean isAcked(int senderId) {
-        return acked.contains(senderId);
+//        return acked.contains(senderId);
+        return acked.get(senderId - 1);
     }
 
     /**
@@ -22,9 +28,9 @@ public class MessageAcker {
      * @return ackedCount - caller can then check if ackedCount > N/2
      */
     public int addAckFrom(int senderId) {
-        if (!acked.contains(senderId))
+        if (!acked.get(senderId - 1))
             ackedCount++;
-        acked.add(senderId);
+        acked.set(senderId - 1);
         return ackedCount;
     }
 
@@ -36,11 +42,11 @@ public class MessageAcker {
         this.message = message;
     }
 
-    public HashSet<Integer> getAcked() {
+    public BitSet getAcked() {
         return acked;
     }
 
-    public void setAcked(HashSet<Integer> acked) {
+    public void setAcked(BitSet acked) {
         this.acked = acked;
     }
 

@@ -233,7 +233,7 @@ public class FifoReceiver {
         if (!isUrbDelivered(senderId, batchNumber)) {
             toBroadcast.putIfAbsent(
                     messageHash,
-                    new MessageAcker(new Message(data[0], senderId, batchNumber, payload, ackedFrom))
+                    new MessageAcker(new Message(data[0], senderId, batchNumber, payload, ackedFrom), runConfig)
             );
             int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
 //            int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
