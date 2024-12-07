@@ -9,7 +9,7 @@ public class MemoryFriendlyBitSet {
     BitSet[][] delivered;
     int[] minWindowIdx;
     int numberOfWindows;
-    private int MAX_WINDOW_SIZE = 1024; // 2^16
+    private int MAX_WINDOW_SIZE = 4096; // 65536; // 2^16
 
     public MemoryFriendlyBitSet(int numberOfHosts, int numberOfMessages) {
         minWindowIdx = new int[numberOfHosts];
@@ -42,7 +42,9 @@ public class MemoryFriendlyBitSet {
 
         // if the min window is full, remove it and update the min window index
         if (delivered[senderIndex][minWindowIdx[senderIndex]].get(MAX_WINDOW_SIZE - 1) && delivered[senderIndex][minWindowIdx[senderIndex]].nextClearBit(0) == MAX_WINDOW_SIZE) {
+//            System.out.println("freeing memory senderId " + senderId + " batch index " + messageIndex);
             delivered[senderIndex][minWindowIdx[senderIndex]] = null;
+            System.gc();
             minWindowIdx[senderIndex]++;
             while (delivered[senderIndex][minWindowIdx[senderIndex]] != null && delivered[senderIndex][minWindowIdx[senderIndex]].nextClearBit(0) == MAX_WINDOW_SIZE)
                 minWindowIdx[senderIndex]++;
