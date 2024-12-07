@@ -18,7 +18,6 @@ public class FifoReceiver {
     private final RunConfig runConfig;
     private final ConcurrentHashMap<Long, MessageAcker> toBroadcast;
     private final ReentrantLock logMutex;
-    private final AtomicInteger ownMessagesDelivered;
     private final AtomicInteger maxSeenMessage;
     private final MemoryFriendlyBitSet urbDelivered;
     private final HashMap<Long, int[]> waitingToBeDelivered;
@@ -26,11 +25,10 @@ public class FifoReceiver {
     private long acksSent;
     private long messagesReceived;
 
-    public FifoReceiver(RunConfig runConfig, ConcurrentHashMap<Long, MessageAcker> toBroadcast, ReentrantLock logMutex, AtomicInteger ownMessagesDelivered, AtomicInteger maxSeenMessage) {
+    public FifoReceiver(RunConfig runConfig, ConcurrentHashMap<Long, MessageAcker> toBroadcast, ReentrantLock logMutex, AtomicInteger maxSeenMessage) {
         this.runConfig = runConfig;
         this.toBroadcast = toBroadcast;
         this.logMutex = logMutex;
-        this.ownMessagesDelivered = ownMessagesDelivered;
         this.maxSeenMessage = maxSeenMessage;
         waitingToBeDelivered = new HashMap<>();
         nextBatchToDeliver = new int[runConfig.getNumberOfHosts()];
@@ -91,10 +89,10 @@ public class FifoReceiver {
         ackData[0] = 1;
 
         // change relayId to mine
-        ackData[ackLength - 12] = (byte) ((runConfig.getProcessId() >> 24) & 0xFF);
-        ackData[ackLength - 11] = (byte) ((runConfig.getProcessId() >> 16) & 0xFF);
-        ackData[ackLength - 10] = (byte) ((runConfig.getProcessId() >> 8) & 0xFF);
-        ackData[ackLength - 9] = (byte) (runConfig.getProcessId() & 0xFF);
+        ackData[ackLength - 4] = (byte) ((runConfig.getProcessId() >> 24) & 0xFF);
+        ackData[ackLength - 3] = (byte) ((runConfig.getProcessId() >> 16) & 0xFF);
+        ackData[ackLength - 2] = (byte) ((runConfig.getProcessId() >> 8) & 0xFF);
+        ackData[ackLength - 1] = (byte) (runConfig.getProcessId() & 0xFF);
 
         // Create ACK packet to send data back to the relay's address
         DatagramPacket ackPacket = new DatagramPacket(ackData, ackLength, relayAddress, relayPort);
@@ -124,29 +122,10 @@ public class FifoReceiver {
 //        if (batchNumber > maxSeenMessage.get())
 //            maxSeenMessage.set(batchNumber);
 
-        int relayId = ((data[length - 12] & 0xFF) << 24) |
-                ((data[length - 11] & 0xFF) << 16) |
-                ((data[length - 10] & 0xFF) << 8) |
-                (data[length - 9] & 0xFF);
-
-        long[] ackedFrom = new long[2];
-        ackedFrom[0] = ((long) (data[length - 16] & 0xFF) << 56) |
-                ((long) (data[length - 15] & 0xFF) << 48) |
-                ((long) (data[length - 14] & 0xFF) << 40) |
-                ((long) (data[length - 13] & 0xFF) << 32) |
-                ((long) (data[length - 12] & 0xFF) << 24) |
-                ((long) (data[length - 11] & 0xFF) << 16) |
-                ((long) (data[length - 10] & 0xFF) << 8) |
-                ((long) (data[length - 9] & 0xFF));
-
-        ackedFrom[1] = ((long) (data[length - 8] & 0xFF) << 56) |
-                ((long) (data[length - 7] & 0xFF) << 48) |
-                ((long) (data[length - 6] & 0xFF) << 40) |
-                ((long) (data[length - 5] & 0xFF) << 32) |
-                ((long) (data[length - 4] & 0xFF) << 24) |
-                ((long) (data[length - 3] & 0xFF) << 16) |
-                ((long) (data[length - 2] & 0xFF) << 8) |
-                ((long) (data[length - 1] & 0xFF));
+        int relayId = ((data[length - 4] & 0xFF) << 24) |
+                ((data[length - 3] & 0xFF) << 16) |
+                ((data[length - 2] & 0xFF) << 8) |
+                (data[length - 1] & 0xFF);
 
         long messageHash = MessageHashUtil.createMessageHash(senderId, batchNumber);
         if (!isUrbDelivered(senderId, batchNumber)) {
@@ -157,13 +136,16 @@ public class FifoReceiver {
 
             // urbDeliver
             if (numberAcked > runConfig.getNumberOfHosts() / 2) {
-                int[] payload = new int[(length - 29) / 4];
+                int[] payload = new int[(length - 13) / 4];
                 for (int i = 0; i < payload.length; i++) {
                     payload[i] = ((data[i*4 + 9] & 0xFF) << 24) |
                             ((data[i*4 + 10] & 0xFF) << 16) |
                             ((data[i*4 + 11] & 0xFF) << 8) |
                             (data[i*4 + 12] & 0xFF);
                 }
+//                System.out.println("Received type " + 1 + " from " + senderId + " batch " + batchNumber + " payload=" + Arrays.toString(payload) + " relayer " + relayId);
+
+//                System.out.println("MarkUrbDel ACK " + 1 + " from " + senderId + " batch " + batchNumber + " payload=" + Arrays.toString(payload) + " relayer " + relayId);
                 markUrbDelivered(senderId, batchNumber, messageHash, payload);  // Process each number directly
             }
         }
@@ -195,7 +177,7 @@ public class FifoReceiver {
         if (batchNumber > maxSeenMessage.get())
             maxSeenMessage.set(batchNumber);
 
-        int[] payload = new int[(length - 29) / 4];
+        int[] payload = new int[(length - 13) / 4];
         for (int i = 0; i < payload.length; i++) {
             payload[i] = ((data[i*4 + 9] & 0xFF) << 24) |
                     ((data[i*4 + 10] & 0xFF) << 16) |
@@ -203,37 +185,18 @@ public class FifoReceiver {
                     (data[i*4 + 12] & 0xFF);
         }
 
-        int relayId = ((data[length - 20] & 0xFF) << 24) |
-                ((data[length - 19] & 0xFF) << 16) |
-                ((data[length - 18] & 0xFF) << 8) |
-                (data[length - 17] & 0xFF);
+        int relayId = ((data[length - 4] & 0xFF) << 24) |
+                ((data[length - 3] & 0xFF) << 16) |
+                ((data[length - 2] & 0xFF) << 8) |
+                (data[length - 1] & 0xFF);
 
-        long[] ackedFrom = new long[2];
-        ackedFrom[0] = ((long) (data[length - 16] & 0xFF) << 56) |
-                ((long) (data[length - 15] & 0xFF) << 48) |
-                ((long) (data[length - 14] & 0xFF) << 40) |
-                ((long) (data[length - 13] & 0xFF) << 32) |
-                ((long) (data[length - 12] & 0xFF) << 24) |
-                ((long) (data[length - 11] & 0xFF) << 16) |
-                ((long) (data[length - 10] & 0xFF) << 8) |
-                ((long) (data[length - 9] & 0xFF));
-
-        ackedFrom[1] = ((long) (data[length - 8] & 0xFF) << 56) |
-                ((long) (data[length - 7] & 0xFF) << 48) |
-                ((long) (data[length - 6] & 0xFF) << 40) |
-                ((long) (data[length - 5] & 0xFF) << 32) |
-                ((long) (data[length - 4] & 0xFF) << 24) |
-                ((long) (data[length - 3] & 0xFF) << 16) |
-                ((long) (data[length - 2] & 0xFF) << 8) |
-                ((long) (data[length - 1] & 0xFF));
-
-//        System.out.println("Received type " + data[0] + " from " + senderId + " batch " + batchNumber + " payload=" + Arrays.toString(payload) + " at " + sendTime);
+//        System.out.println("Received type " + data[0] + " from " + senderId + " batch " + batchNumber + " payload=" + Arrays.toString(payload) + " relayer " + relayId);
 
         long messageHash = MessageHashUtil.createMessageHash(senderId, batchNumber);
         if (!isUrbDelivered(senderId, batchNumber)) {
             toBroadcast.putIfAbsent(
                     messageHash,
-                    new MessageAcker(new Message(data[0], senderId, batchNumber, payload, ackedFrom), runConfig)
+                    new MessageAcker(new Message(data[0], senderId, batchNumber, payload), runConfig)
             );
             int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
 //            int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
@@ -241,12 +204,13 @@ public class FifoReceiver {
 
             // urbDeliver
             if (numberAcked > runConfig.getNumberOfHosts() / 2) {
+//                System.out.println("MarkUrbDel MES " + data[0] + " from " + senderId + " batch " + batchNumber + " payload=" + Arrays.toString(payload) + " relayer " + relayId);
                 markUrbDelivered(senderId, batchNumber, messageHash, payload);  // Process each number directly
             }
         }
 
         if (isUrbDelivered(senderId, batchNumber) && toBroadcast.containsKey(messageHash)) {
-            int numberAcked = setBitAndGetCount(ackedFrom, relayId);
+            int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
 
             // remove
             if (numberAcked == runConfig.getNumberOfHosts()) {
@@ -258,54 +222,11 @@ public class FifoReceiver {
         sendACK(data, length, relayAddress, relayPort);
     }
 
-    private int setBitAndGetCount(long[] ackedFrom, int relayId) {
-        int n = relayId - 1;
-
-        int byteIndex = n / 64;    // Determine which byte contains the bit
-        int bitIndex = n % 64;     // Determine the bit position within the byte
-
-        ackedFrom[byteIndex] |= (1L << bitIndex); // Set the bit using bitwise OR
-
-        // Count the number of set bits
-        return countBits(ackedFrom);
-    }
-
-    private int countBits(long[] ackedFrom) {
-        int count = 0;
-        for (long l : ackedFrom) {
-            count += Long.bitCount(l);
-        }
-        return count;
-    }
-
-//    private void markUrbDelivered(int senderId, int batchNumber, int[] payload) {
-////        System.out.println("URB Delivering " + senderId + " " + batchNumber + " " + Arrays.toString(payload));
-//        if (!urbDelivered.isSet(senderId, batchNumber)) {
-//            urbDelivered.set(senderId, batchNumber);
-//            if (runConfig.getProcessId() == senderId)
-//                ownMessagesDelivered.getAndIncrement();
-//
-//            // FIFO deliver loop logic
-//            try {
-//                logMutex.lock();
-//                while (batchNumber == 1 || (batchNumber > 1 && isUrbDelivered(senderId, batchNumber - 1) && isUrbDelivered(senderId, batchNumber))) {
-//                    for (int number : payload) {
-//                        runConfig.getLogBuffer().log("d " + senderId + " " + number);
-//                    }
-//                    batchNumber++;
-//                }
-//            } finally {
-//                logMutex.unlock();
-//            }
-//        }
-//    }
 
     private void markUrbDelivered(int senderId, int batchNumber, long messageHash, int[] payload) {
 //        System.out.println("URB Delivering " + senderId + " " + batchNumber + " " + Arrays.toString(payload));
         if (!urbDelivered.isSet(senderId, batchNumber)) {
             urbDelivered.set(senderId, batchNumber);
-            if (runConfig.getProcessId() == senderId)
-                ownMessagesDelivered.getAndIncrement();
 
             // FIFO deliver logic
             if (batchNumber != nextBatchToDeliver[senderId - 1]) {
@@ -328,6 +249,7 @@ public class FifoReceiver {
                             break;
                         payload = waitingToBeDelivered.get(messageHash);
                         for (int number : payload) {
+//                            System.out.println("Delivering from " + senderId + " batch " + batchNumber + " payload=" + Arrays.toString(payload) );
                             runConfig.getLogBuffer().log("d " + senderId + " " + number);
                         }
                         waitingToBeDelivered.remove(messageHash);

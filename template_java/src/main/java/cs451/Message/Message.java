@@ -7,14 +7,12 @@ public class Message {
     private int senderId;
     private int batchNumber;
     private int[] data;
-    private long[] ackedFrom;
 
-    public Message(byte messageType, int senderId, int batchNumber, int[] data, long[] ackedFrom) {
+    public Message(byte messageType, int senderId, int batchNumber, int[] data) {
         this.messageType = messageType;
         this.senderId = senderId;
         this.batchNumber = batchNumber;
         this.data = data;
-        this.ackedFrom = ackedFrom;
     }
 
     /**
@@ -31,14 +29,13 @@ public class Message {
                 (byte) 0,
                 processId,
                 lastCreated+1,
-                data,
-                new long[]{0L,0L}
+                data
         );
     }
 
     public int getMessageSize() {
         // byte type, int senderId, int batchNumber, int[] data, int relayId, long sendTime
-        return (Byte.SIZE + Integer.SIZE + Integer.SIZE + Integer.SIZE * data.length + Integer.SIZE + Byte.SIZE * 16) / 8;
+        return (Byte.SIZE + Integer.SIZE + Integer.SIZE + Integer.SIZE * data.length + Integer.SIZE) / 8;
     }
 
     public int getBatchNumber() {
@@ -73,14 +70,6 @@ public class Message {
         this.data = data;
     }
 
-    public long[] getAckedFrom() {
-        return ackedFrom;
-    }
-
-    public void setAckedFrom(long[] ackedFrom) {
-        this.ackedFrom = ackedFrom;
-    }
-
     @Override
     public String toString() {
         return "Message{" +
@@ -88,7 +77,6 @@ public class Message {
                 ", senderId=" + senderId +
                 ", batchNumber=" + batchNumber +
                 ", data=" + Arrays.toString(data) +
-                ", ackedFrom=" + ackedFrom +
                 '}';
     }
 }

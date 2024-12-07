@@ -21,7 +21,6 @@ public class BEB {
     long messagesSent;
     ReentrantLock logMutex;
     ConcurrentHashMap<Long, MessageAcker> toBroadcast; // (senderId, messageId) message hash to (Message, ackedSet)
-    AtomicInteger ownMessagesDelivered;
     AtomicInteger maxSeenMessage;
 
     public BEB(RunConfig runConfig) {
@@ -29,7 +28,6 @@ public class BEB {
 
         this.logMutex = new ReentrantLock();
         this.toBroadcast = new ConcurrentHashMap<>();
-        this.ownMessagesDelivered = new AtomicInteger(0); // TODO this will hold logic for how many to send
         this.maxSeenMessage = new AtomicInteger(0);
 
         // add DEBUG shutdown hook TODO remove this
@@ -40,7 +38,7 @@ public class BEB {
     }
 
     public void receive() {
-        new FifoReceiver(runConfig, toBroadcast, logMutex, ownMessagesDelivered, maxSeenMessage).receive();
+        new FifoReceiver(runConfig, toBroadcast, logMutex, maxSeenMessage).receive();
     }
 
     private void sendMessage(Message message, InetAddress receiverAddress, int receiverPort) {
@@ -54,7 +52,6 @@ public class BEB {
         for (int i = 0; i < data.length; i++)
             buffer.putInt(data[i]);
         buffer.putInt(runConfig.getProcessId());
-        buffer.putLong(System.currentTimeMillis()); // TODO change the broadcastTime
 
         byte[] sendData = buffer.array();
 //        System.out.println("senData " + Arrays.toString(sendData));
@@ -104,7 +101,7 @@ public class BEB {
 
         // Broadcast server
         while (true) {
-//            System.out.println("Broadcast time=" + System.currentTimeMillis() + " toBroadcast.size=" + toBroadcast.size() + " newToAdd=" + newToAdd + " lastNewAdded=" + lastNewAdded + " ownMessagesDelivered=" + ownMessagesDelivered.get() + " messagesSent=" + messagesSent);
+//            System.out.println("Broadcast time=" + System.currentTimeMillis() + " toBroadcast.size=" + toBroadcast.size() + " newToAdd=" + newToAdd + " lastNewAdded=" + lastNewAdded + " messagesSent=" + messagesSent);
 
 //            System.out.println("broadcast adding " + newToAdd + " messages. Last acked " + ownMessagesDelivered.get() + " own messages. toBroadcast=" + toBroadcast.toString());
 //            System.out.println();
@@ -141,7 +138,7 @@ public class BEB {
             }
             try {
 //                        Thread.sleep(broadcast_timeout);
-                Thread.sleep(0,30000);
+                Thread.sleep(0,10000);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
