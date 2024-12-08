@@ -19,17 +19,19 @@ public class FifoReceiver {
     private final ConcurrentHashMap<Long, MessageAcker> toBroadcast;
     private final ReentrantLock logMutex;
     private final AtomicInteger maxSeenMessage;
+    private final AtomicInteger ownBatchesDelivered;
 //    private final MemoryFriendlyBitSet urbDelivered;
     private final MemoryFriendlyBitSet delivered;
     private final int[] nextNumberToDeliver;
     private long acksSent;
     private long messagesReceived;
 
-    public FifoReceiver(RunConfig runConfig, ConcurrentHashMap<Long, MessageAcker> toBroadcast, ReentrantLock logMutex, AtomicInteger maxSeenMessage) {
+    public FifoReceiver(RunConfig runConfig, ConcurrentHashMap<Long, MessageAcker> toBroadcast, ReentrantLock logMutex, AtomicInteger maxSeenMessage, AtomicInteger ownBatchesDelivered) {
         this.runConfig = runConfig;
         this.toBroadcast = toBroadcast;
         this.logMutex = logMutex;
         this.maxSeenMessage = maxSeenMessage;
+        this.ownBatchesDelivered = ownBatchesDelivered;
 
         this.nextNumberToDeliver = new int[runConfig.getNumberOfHosts()];
         Arrays.fill(nextNumberToDeliver, 1);
@@ -198,7 +200,7 @@ public class FifoReceiver {
 //        System.out.println("Received type " + data[0] + " from " + senderId + " batch " + batchNumber + " payload=" + Arrays.toString(payload) + " relayer " + relayId);
 
         long messageHash = MessageHashUtil.createMessageHash(senderId, batchNumber);
-        if (!isDelivered(senderId, payload[0]) && toBroadcast.size() < 20) { //  && toBroadcast.size() < 10
+        if (!isDelivered(senderId, payload[0])) { //  && toBroadcast.size() < 10
             toBroadcast.putIfAbsent(
                     messageHash,
                     new MessageAcker(new Message(data[0], senderId, batchNumber, payload), runConfig)
@@ -282,6 +284,8 @@ public class FifoReceiver {
 
     private void markDelivered(int senderId, int[] payload) {
         if (!delivered.isSet(senderId, payload[0])) {
+            if (senderId == runConfig.getProcessId())
+                ownBatchesDelivered.getAndIncrement();
             // URB deliver
             for (int number : payload)
                 delivered.set(senderId, number);

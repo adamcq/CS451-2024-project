@@ -10,7 +10,6 @@ import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class BEB {
@@ -21,6 +20,7 @@ public class BEB {
     ReentrantLock logMutex;
     ConcurrentHashMap<Long, MessageAcker> toBroadcast; // (senderId, messageId) message hash to (Message, ackedSet)
     AtomicInteger maxSeenMessage;
+    AtomicInteger ownBatchesDelivered;
 
     public BEB(RunConfig runConfig) {
         this.runConfig = runConfig;
@@ -28,6 +28,7 @@ public class BEB {
         this.logMutex = new ReentrantLock();
         this.toBroadcast = new ConcurrentHashMap<>();
         this.maxSeenMessage = new AtomicInteger(0);
+        this.ownBatchesDelivered = new AtomicInteger(0);
 
         // add DEBUG shutdown hook TODO remove this
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -37,7 +38,7 @@ public class BEB {
     }
 
     public void receive() {
-        new FifoReceiver(runConfig, toBroadcast, logMutex, maxSeenMessage).receive();
+        new FifoReceiver(runConfig, toBroadcast, logMutex, maxSeenMessage, ownBatchesDelivered).receive();
     }
 
     private void sendMessage(Message message, InetAddress receiverAddress, int receiverPort) {
@@ -138,14 +139,16 @@ public class BEB {
             }
             try {
 //                        Thread.sleep(broadcast_timeout);
-                Thread.sleep(0,10000);
+                Thread.sleep(0,30000);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
 
-            //simple logic to add new messages
-            newToAdd = maxSeenMessage.get() - lastNewAdded + 4; // only send the next message if old one was delivered
-
+            //simple slow logic to add new messages
+                newToAdd = (ownBatchesDelivered.get() == lastNewAdded) ? 1 : 0;
+            
+            // fast logic
+//            newToAdd = maxSeenMessage.get() - lastNewAdded + 6; // only send the next message if old one was delivered
         }
     }
 }
