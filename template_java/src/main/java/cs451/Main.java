@@ -2,13 +2,10 @@ package cs451;
 
 import cs451.Parsers.Parser;
 
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.FileReader;
 import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.SocketException;
-import java.util.AbstractMap.SimpleEntry;
-import java.util.Arrays;
-import java.util.HashMap;
 
 public class Main {
     private static final String SPACES_REGEX = "\\s+";
@@ -83,13 +80,14 @@ public class Main {
         // BEB
         BEB bestEffortBroadcast = new BEB(runConfig);
         Thread receiverThread = new Thread(bestEffortBroadcast::receive, "ReceiverThread");
-        Thread broadcastThread = new Thread(bestEffortBroadcast::broadcast, "BroadcastThread");
+//        Thread broadcastThread = new Thread(bestEffortBroadcast::broadcast, "BroadcastThread");
 
-        Thread[] threads = new Thread[] {receiverThread, broadcastThread};
+        Thread[] threads = new Thread[] {receiverThread};
         initSignalHandlers(runConfig.getLogBuffer(), runConfig.getSocket(), threads);
 
         receiverThread.start();
-        broadcastThread.start();
+//        broadcastThread.start();
+        bestEffortBroadcast.broadcast();
 
         // After a process finishes broadcasting,
         // it waits forever for the delivery of messages.

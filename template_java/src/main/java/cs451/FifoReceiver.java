@@ -5,11 +5,12 @@ import cs451.Message.MessageAcker;
 import cs451.Message.MessageHashUtil;
 
 import java.io.IOException;
+
 import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.SocketTimeoutException;
+
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
@@ -138,6 +139,7 @@ public class FifoReceiver {
                 ((data[length - 2] & 0xFF) << 8) |
                 (data[length - 1] & 0xFF);
 
+//        System.out.println("processing ack time=" + System.currentTimeMillis() + " from " + senderId + " batch " + batchNumber);
         long messageHash = MessageHashUtil.createMessageHash(senderId, batchNumber);
         if (!isDelivered(senderId, payload[0])) {
 //            System.out.println("processing ack from " + senderId + " batch " + batchNumber);
@@ -181,8 +183,8 @@ public class FifoReceiver {
                 ((data[7] & 0xFF) << 8) |
                 (data[8] & 0xFF);
 
-        if (batchNumber > maxSeenMessage.get())
-            maxSeenMessage.set(batchNumber);
+//        if (batchNumber > maxSeenMessage.get())
+//            maxSeenMessage.set(batchNumber);
 
         int[] payload = new int[(length - 13) / 4];
         for (int i = 0; i < payload.length; i++) {
@@ -197,15 +199,22 @@ public class FifoReceiver {
                 ((data[length - 2] & 0xFF) << 8) |
                 (data[length - 1] & 0xFF);
 
-//        System.out.println("Received type " + data[0] + " from " + senderId + " batch " + batchNumber + " payload=" + Arrays.toString(payload) + " relayer " + relayId);
+//        System.out.println("Received time=" + System.currentTimeMillis() + " type " + data[0] + " from " + senderId + " batch " + batchNumber + " payload=" + Arrays.toString(payload) + " relayer " + relayId);
 
         long messageHash = MessageHashUtil.createMessageHash(senderId, batchNumber);
         if (!isDelivered(senderId, payload[0])) { //  && toBroadcast.size() < 10
-            toBroadcast.putIfAbsent(
-                    messageHash,
-                    new MessageAcker(new Message(data[0], senderId, batchNumber, payload), runConfig)
-            );
-            int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
+            int numberAcked = 0;
+            if (!toBroadcast.containsKey(messageHash)) {
+                MessageAcker messageAcker = new MessageAcker(new Message(data[0], senderId, batchNumber, payload), runConfig);
+                messageAcker.addAckFrom(relayId);
+                numberAcked = messageAcker.addAckFrom(runConfig.getProcessId());
+                toBroadcast.putIfAbsent(
+                        messageHash,
+                        messageAcker
+                );
+            } else {
+                numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
+            }
 //            int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
 //            System.out.println("messageHash " + messageHash + " decoded " + MessageHashUtil.extractSenderId(messageHash) + " " + MessageHashUtil.extractMessageNumber(messageHash) + " numberAcked " + numberAcked + " ackedSet " + toBroadcast.get(messageHash).getAcked().toString());
 
@@ -220,6 +229,9 @@ public class FifoReceiver {
             MessageAcker messageAcker = toBroadcast.get(messageHash);
             if (messageAcker != null) {
                 int numberAcked = messageAcker.addAckFrom(relayId);
+
+                if (batchNumber > maxSeenMessage.get())
+                    maxSeenMessage.set(batchNumber);
 
                 // remove
                 if (numberAcked == runConfig.getNumberOfHosts()) {

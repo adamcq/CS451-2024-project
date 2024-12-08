@@ -4,10 +4,12 @@ import cs451.Message.Message;
 import cs451.Message.MessageAcker;
 import cs451.Message.MessageHashUtil;
 
-import java.io.IOException;
-import java.net.*;
+import java.net.DatagramPacket;
+import java.net.InetAddress;
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.Map;
+import java.util.AbstractMap;
+import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
@@ -26,7 +28,7 @@ public class BEB {
         this.runConfig = runConfig;
 
         this.logMutex = new ReentrantLock();
-        this.toBroadcast = new ConcurrentHashMap<>();
+        this.toBroadcast = new ConcurrentHashMap<>(1000, 0.75f, 2);
         this.maxSeenMessage = new AtomicInteger(0);
         this.ownBatchesDelivered = new AtomicInteger(0);
 
@@ -98,11 +100,78 @@ public class BEB {
 
         this.numberOfBatches = numberOfBatches;
         int broadcast_timeout = 1;
+        Random rand = new Random(runConfig.getProcessId());
+
+        int sleepMillisFrom = 0;
+        int sleepMillisBound = 0;
+
+        int sleepNanoFrom;
+        int sleepNanoBound;
+
+        int sendIncrement = 1;
+
+        //simple slow logic to add new messages
+        if (runConfig.getNumberOfHosts() > 119) {
+            sleepNanoFrom = 0;
+            sleepNanoBound = 200000;
+            sleepMillisFrom = 3000;
+            sendIncrement = 1;
+        }
+        else if (runConfig.getNumberOfHosts() > 99) {
+            sleepNanoFrom = 0;
+            sleepNanoBound = 200000;
+            sleepMillisFrom = 3000;
+            sendIncrement = 1;
+        } else if (runConfig.getNumberOfHosts() > 79) {
+            sleepNanoFrom = 600000;
+            sleepNanoBound = 200000;
+            sendIncrement = 1;
+            sleepMillisFrom = 2500;
+        } else if (runConfig.getNumberOfHosts() > 49) {
+            sleepNanoFrom = 600000;
+            sleepNanoBound = 200000;
+            sendIncrement = 1;
+            sleepMillisFrom = 1500;
+
+        } else if (runConfig.getNumberOfHosts() > 39) {
+            sleepNanoFrom = 600000;
+            sleepNanoBound = 200000;
+            sendIncrement = 1;
+            sleepMillisFrom = 750;
+        }
+        else if (runConfig.getNumberOfHosts() > 29) {
+            sleepNanoFrom = 600000;
+            sleepNanoBound = 200000;
+            sendIncrement = 1;
+            sleepMillisFrom = 250;
+        }
+        else if (runConfig.getNumberOfHosts() > 19) {
+            sleepNanoFrom = 600000;
+            sleepNanoBound = 200000;
+            sendIncrement = 1;
+            sleepMillisFrom = 50;
+        }
+            // fast logic
+        else if (runConfig.getNumberOfHosts() > 9) {
+            sleepNanoFrom = 600000;
+            sleepNanoBound = 200000;
+            sendIncrement = 1;
+            sleepMillisFrom = 4;
+        }
+        else if (runConfig.getNumberOfHosts() > 4) {
+            sleepNanoFrom = 100000;
+            sleepNanoBound = 200000;
+            sendIncrement = 1;
+
+        }
+        else {
+            sleepNanoFrom = 20000;
+            sleepNanoBound = 40000;
+            sendIncrement = 5;
+        }
 
         // Broadcast server
         while (true) {
-            System.out.println("Broadcast time=" + System.currentTimeMillis() + " toBroadcast.size=" + toBroadcast.size() + " newToAdd=" + newToAdd + " lastNewAdded=" + lastNewAdded + " messagesSent=" + messagesSent);
-
 //            System.out.println("broadcast adding " + newToAdd + " messages. Last acked " + ownMessagesDelivered.get() + " own messages. toBroadcast=" + toBroadcast.toString());
 //            System.out.println();
 
@@ -123,13 +192,29 @@ public class BEB {
             }
 
             // Broadcast
-//            int counter = 0;
+            int counter = 1;
+//            System.out.println("Broadcast time=" + System.currentTimeMillis() + " toBroadcast.size=" + toBroadcast.size() + " newToAdd=" + newToAdd + " lastNewAdded=" + lastNewAdded + " messagesSent=" + messagesSent);
+            int toBroadcastCounter = 0;
+
             for (Map.Entry<Long, MessageAcker> entry : toBroadcast.entrySet()) {
-//                System.out.println("Broadcasting Batch " + entry.getValue().getMessage().getBatchNumber() + " senderId " + entry.getValue().getMessage().getSenderId() + " acked count " + entry.getValue().getAckedCount() + " acked by: " + entry.getValue().getAcked());
+//                System.out.println((toBroadcastCounter++) + " Batch time=" + System.currentTimeMillis() + " batchNum " + entry.getValue().getMessage().getBatchNumber() + " senderId " + entry.getValue().getMessage().getSenderId() + " acked count " + entry.getValue().getAckedCount() + " acked by: " + entry.getValue().getAcked());
+//                if (entry.getValue().getAckedCount() == runConfig.getNumberOfHosts()) {
+//                    toBroadcast.
+//                }
                 for (Map.Entry<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> addressPort : runConfig.getIdToAddressPort().entrySet()){
                     if (!entry.getValue().isAcked(addressPort.getKey())) {
                         sendMessage(entry.getValue().getMessage(), addressPort.getValue().getKey(), addressPort.getValue().getValue());
                         messagesSent++;
+//                        if (counter % 10 == 0) {
+//                            try {
+////                          Thread.sleep(broadcast_timeout);
+//                                Thread.sleep(sleepMillisFrom, sleepNanoFrom + rand.nextInt( sleepNanoBound));
+//                            } catch (InterruptedException e) {
+//                                Thread.currentThread().interrupt();
+//                            }
+//                            counter = 1;
+//                        }
+//                        counter++;
                     }
                 }
                 // sleep
@@ -137,18 +222,20 @@ public class BEB {
 //                    counter = 0;
 //                }
             }
+
             try {
 //                        Thread.sleep(broadcast_timeout);
-                Thread.sleep(0,30000);
+                Thread.sleep(sleepMillisFrom, sleepNanoFrom + rand.nextInt(sleepNanoBound));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
 
-            //simple slow logic to add new messages
-                newToAdd = (ownBatchesDelivered.get() == lastNewAdded) ? 1 : 0;
-            
-            // fast logic
-//            newToAdd = maxSeenMessage.get() - lastNewAdded + 6; // only send the next message if old one was delivered
+//            //simple slow logic to add new messages
+//            if (runConfig.getNumberOfHosts() > 60)
+//                newToAdd = (ownBatchesDelivered.get() == lastNewAdded) ? 1 : 0;
+//            // fast logic
+//            else
+                newToAdd = maxSeenMessage.get() - lastNewAdded + sendIncrement; // only send the next message if old one was delivered
         }
     }
 }
