@@ -34,7 +34,7 @@ public class Message {
     }
 
     public int getMessageSize() {
-        // byte type, int senderId, int batchNumber, int[] data, int relayId, long sendTime
+        // byte type, int senderId, int batchNumber, int[] data, int relayId
         return (Byte.SIZE + Integer.SIZE + Integer.SIZE + Integer.SIZE * data.length + Integer.SIZE) / 8;
     }
 

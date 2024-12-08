@@ -19,9 +19,9 @@ public class FifoReceiver {
     private final ConcurrentHashMap<Long, MessageAcker> toBroadcast;
     private final ReentrantLock logMutex;
     private final AtomicInteger maxSeenMessage;
-    private final MemoryFriendlyBitSet urbDelivered;
-    private final HashMap<Long, int[]> waitingToBeDelivered;
-    private final int[] nextBatchToDeliver;
+//    private final MemoryFriendlyBitSet urbDelivered;
+    private final MemoryFriendlyBitSet delivered;
+    private final int[] nextNumberToDeliver;
     private long acksSent;
     private long messagesReceived;
 
@@ -30,11 +30,12 @@ public class FifoReceiver {
         this.toBroadcast = toBroadcast;
         this.logMutex = logMutex;
         this.maxSeenMessage = maxSeenMessage;
-        waitingToBeDelivered = new HashMap<>();
-        nextBatchToDeliver = new int[runConfig.getNumberOfHosts()];
-        Arrays.fill(nextBatchToDeliver, 1);
 
-        this.urbDelivered = new MemoryFriendlyBitSet(runConfig.getNumberOfHosts(), runConfig.getNumberOfMessages());
+        this.nextNumberToDeliver = new int[runConfig.getNumberOfHosts()];
+        Arrays.fill(nextNumberToDeliver, 1);
+
+//        this.urbDelivered = new MemoryFriendlyBitSet(runConfig.getNumberOfHosts(), runConfig.getNumberOfMessages());
+        this.delivered = new MemoryFriendlyBitSet(runConfig.getNumberOfHosts(), runConfig.getNumberOfMessages());
         // add DEBUG shutdown hook TODO remove this
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("Inside Receiver Shutdown Hook");
@@ -122,13 +123,21 @@ public class FifoReceiver {
 //        if (batchNumber > maxSeenMessage.get())
 //            maxSeenMessage.set(batchNumber);
 
+        int[] payload = new int[(length - 13) / 4];
+        for (int i = 0; i < payload.length; i++) {
+            payload[i] = ((data[i*4 + 9] & 0xFF) << 24) |
+                    ((data[i*4 + 10] & 0xFF) << 16) |
+                    ((data[i*4 + 11] & 0xFF) << 8) |
+                    (data[i*4 + 12] & 0xFF);
+        }
+
         int relayId = ((data[length - 4] & 0xFF) << 24) |
                 ((data[length - 3] & 0xFF) << 16) |
                 ((data[length - 2] & 0xFF) << 8) |
                 (data[length - 1] & 0xFF);
 
         long messageHash = MessageHashUtil.createMessageHash(senderId, batchNumber);
-        if (!isUrbDelivered(senderId, batchNumber)) {
+        if (!isDelivered(senderId, payload[0])) {
 //            System.out.println("processing ack from " + senderId + " batch " + batchNumber);
 
             int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
@@ -136,27 +145,23 @@ public class FifoReceiver {
 
             // urbDeliver
             if (numberAcked > runConfig.getNumberOfHosts() / 2) {
-                int[] payload = new int[(length - 13) / 4];
-                for (int i = 0; i < payload.length; i++) {
-                    payload[i] = ((data[i*4 + 9] & 0xFF) << 24) |
-                            ((data[i*4 + 10] & 0xFF) << 16) |
-                            ((data[i*4 + 11] & 0xFF) << 8) |
-                            (data[i*4 + 12] & 0xFF);
-                }
 //                System.out.println("Received type " + 1 + " from " + senderId + " batch " + batchNumber + " payload=" + Arrays.toString(payload) + " relayer " + relayId);
 
 //                System.out.println("MarkUrbDel ACK " + 1 + " from " + senderId + " batch " + batchNumber + " payload=" + Arrays.toString(payload) + " relayer " + relayId);
-                markUrbDelivered(senderId, batchNumber, messageHash, payload);  // Process each number directly
+                markDelivered(senderId, payload);  // Process each number directly
             }
         }
 
-        if (isUrbDelivered(senderId, batchNumber) && toBroadcast.containsKey(messageHash)) {
-            int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
+        if (isDelivered(senderId, payload[0])) {
+            MessageAcker messageAcker = toBroadcast.get(messageHash);
+            if (messageAcker != null) {
+                int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
 //            int numberAcked = setBitAndGetCount(ackedFrom, relayId);
 
-            // remove
-            if (numberAcked == runConfig.getNumberOfHosts()) {
-                toBroadcast.remove(messageHash);
+                // remove
+                if (numberAcked == runConfig.getNumberOfHosts()) {
+                    toBroadcast.remove(messageHash);
+                }
             }
         }
     }
@@ -193,7 +198,7 @@ public class FifoReceiver {
 //        System.out.println("Received type " + data[0] + " from " + senderId + " batch " + batchNumber + " payload=" + Arrays.toString(payload) + " relayer " + relayId);
 
         long messageHash = MessageHashUtil.createMessageHash(senderId, batchNumber);
-        if (!isUrbDelivered(senderId, batchNumber)) {
+        if (!isDelivered(senderId, payload[0]) && toBroadcast.size() < 20) { //  && toBroadcast.size() < 10
             toBroadcast.putIfAbsent(
                     messageHash,
                     new MessageAcker(new Message(data[0], senderId, batchNumber, payload), runConfig)
@@ -204,17 +209,20 @@ public class FifoReceiver {
 
             // urbDeliver
             if (numberAcked > runConfig.getNumberOfHosts() / 2) {
-//                System.out.println("MarkUrbDel MES " + data[0] + " from " + senderId + " batch " + batchNumber + " payload=" + Arrays.toString(payload) + " relayer " + relayId);
-                markUrbDelivered(senderId, batchNumber, messageHash, payload);  // Process each number directly
+//                System.out.println("MarkDel MES " + data[0] + " from " + senderId + " batch " + batchNumber + " payload=" + Arrays.toString(payload) + " relayer " + relayId);
+                markDelivered(senderId, payload);  // Process each number directly
             }
         }
 
-        if (isUrbDelivered(senderId, batchNumber) && toBroadcast.containsKey(messageHash)) {
-            int numberAcked = toBroadcast.get(messageHash).addAckFrom(relayId);
+        if (isDelivered(senderId, payload[0])) {
+            MessageAcker messageAcker = toBroadcast.get(messageHash);
+            if (messageAcker != null) {
+                int numberAcked = messageAcker.addAckFrom(relayId);
 
-            // remove
-            if (numberAcked == runConfig.getNumberOfHosts()) {
-                toBroadcast.remove(messageHash);
+                // remove
+                if (numberAcked == runConfig.getNumberOfHosts()) {
+                    toBroadcast.remove(messageHash);
+                }
             }
         }
 
@@ -223,37 +231,73 @@ public class FifoReceiver {
     }
 
 
-    private void markUrbDelivered(int senderId, int batchNumber, long messageHash, int[] payload) {
-//        System.out.println("URB Delivering " + senderId + " " + batchNumber + " " + Arrays.toString(payload));
-        if (!urbDelivered.isSet(senderId, batchNumber)) {
-            urbDelivered.set(senderId, batchNumber);
+//    private void markUrbDelivered(int senderId, int batchNumber, long messageHash, int[] payload) {
+////        System.out.println("URB Delivering " + senderId + " " + batchNumber + " " + Arrays.toString(payload));
+//
+//        if (!urbDelivered.isSet(senderId, batchNumber)) {
+//            urbDelivered.set(senderId, batchNumber);
+//
+//            // FIFO deliver logic
+//            if (batchNumber != nextBatchToDeliver[senderId - 1]) {
+//                waitingToBeDelivered.put(messageHash, payload);
+//            }
+//            else {
+//                try {
+//                    System.out.println("waitingToBeDelivered " + waitingToBeDelivered.size() + "  " + waitingToBeDelivered);
+//                    // log this
+//                    logMutex.lock();
+//                    for (int number : payload) {
+//                        runConfig.getLogBuffer().log("d " + senderId + " " + number);
+//                    }
+//                    waitingToBeDelivered.remove(messageHash);
+//                    nextBatchToDeliver[senderId - 1]++;
+//
+//                    // log all waiting
+//                    while (true) {
+//                        messageHash = MessageHashUtil.createMessageHash(senderId, nextBatchToDeliver[senderId - 1]);
+//                        if (!waitingToBeDelivered.containsKey(messageHash))
+//                            break;
+//                        payload = waitingToBeDelivered.get(messageHash);
+//                        for (int number : payload) {
+////                            System.out.println("Delivering from " + senderId + " batch " + batchNumber + " payload=" + Arrays.toString(payload) );
+//                            runConfig.getLogBuffer().log("d " + senderId + " " + number);
+//                        }
+//                        waitingToBeDelivered.remove(messageHash);
+//                        nextBatchToDeliver[senderId - 1]++;
+//                    }
+//                } finally {
+//                    logMutex.unlock();
+//                }
+//            }
+//        }
+//    }
+//    private boolean isUrbDelivered(int senderId, int batchNumber) {
+//        return urbDelivered.isSet(senderId, batchNumber);
+//    }
 
-            // FIFO deliver logic
-            if (batchNumber != nextBatchToDeliver[senderId - 1]) {
-                waitingToBeDelivered.put(messageHash, payload);
-            }
-            else {
+    private boolean isDelivered(int senderId, int number) {
+        return delivered.isSet(senderId, number);
+        // return delivered.isSet(senderId, batchNumber * 8 - 7); // check if the first message of the next batch is delivered - delivered now per message rather than batch
+    }
+
+    private void markDelivered(int senderId, int[] payload) {
+        if (!delivered.isSet(senderId, payload[0])) {
+            // URB deliver
+            for (int number : payload)
+                delivered.set(senderId, number);
+
+            // FIFO deliver
+            int number = payload[0];
+            if (number == nextNumberToDeliver[senderId - 1]) { // trigger FIFO delivery
                 try {
-                    // log this
                     logMutex.lock();
-                    for (int number : payload) {
+                    while (number <= runConfig.getNumberOfMessages() && number > 0 && isDelivered(senderId, number)) { // number > 0 in case MAX_INTEGER overflow
+                        // log
                         runConfig.getLogBuffer().log("d " + senderId + " " + number);
-                    }
-                    waitingToBeDelivered.remove(messageHash);
-                    nextBatchToDeliver[senderId - 1]++;
 
-                    // log all waiting
-                    while (true) {
-                        messageHash = MessageHashUtil.createMessageHash(senderId, nextBatchToDeliver[senderId - 1]);
-                        if (!waitingToBeDelivered.containsKey(messageHash))
-                            break;
-                        payload = waitingToBeDelivered.get(messageHash);
-                        for (int number : payload) {
-//                            System.out.println("Delivering from " + senderId + " batch " + batchNumber + " payload=" + Arrays.toString(payload) );
-                            runConfig.getLogBuffer().log("d " + senderId + " " + number);
-                        }
-                        waitingToBeDelivered.remove(messageHash);
-                        nextBatchToDeliver[senderId - 1]++;
+                        // move on
+                        nextNumberToDeliver[senderId - 1]++;
+                        number++;
                     }
                 } finally {
                     logMutex.unlock();
@@ -261,7 +305,5 @@ public class FifoReceiver {
             }
         }
     }
-    private boolean isUrbDelivered(int senderId, int batchNumber) {
-        return urbDelivered.isSet(senderId, batchNumber);
-    }
+
 }

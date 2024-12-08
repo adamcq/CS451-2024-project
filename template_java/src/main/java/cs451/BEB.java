@@ -16,7 +16,6 @@ import java.util.concurrent.locks.ReentrantLock;
 public class BEB {
     // BEB ARGS
     private final RunConfig runConfig;
-
     int numberOfBatches;
     long messagesSent;
     ReentrantLock logMutex;
@@ -101,7 +100,7 @@ public class BEB {
 
         // Broadcast server
         while (true) {
-//            System.out.println("Broadcast time=" + System.currentTimeMillis() + " toBroadcast.size=" + toBroadcast.size() + " newToAdd=" + newToAdd + " lastNewAdded=" + lastNewAdded + " messagesSent=" + messagesSent);
+            System.out.println("Broadcast time=" + System.currentTimeMillis() + " toBroadcast.size=" + toBroadcast.size() + " newToAdd=" + newToAdd + " lastNewAdded=" + lastNewAdded + " messagesSent=" + messagesSent);
 
 //            System.out.println("broadcast adding " + newToAdd + " messages. Last acked " + ownMessagesDelivered.get() + " own messages. toBroadcast=" + toBroadcast.toString());
 //            System.out.println();
@@ -125,6 +124,7 @@ public class BEB {
             // Broadcast
 //            int counter = 0;
             for (Map.Entry<Long, MessageAcker> entry : toBroadcast.entrySet()) {
+//                System.out.println("Broadcasting Batch " + entry.getValue().getMessage().getBatchNumber() + " senderId " + entry.getValue().getMessage().getSenderId() + " acked count " + entry.getValue().getAckedCount() + " acked by: " + entry.getValue().getAcked());
                 for (Map.Entry<Integer, AbstractMap.SimpleEntry<InetAddress, Integer>> addressPort : runConfig.getIdToAddressPort().entrySet()){
                     if (!entry.getValue().isAcked(addressPort.getKey())) {
                         sendMessage(entry.getValue().getMessage(), addressPort.getValue().getKey(), addressPort.getValue().getValue());
