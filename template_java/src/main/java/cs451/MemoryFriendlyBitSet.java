@@ -2,20 +2,19 @@ package cs451;
 
 import java.util.BitSet;
 
-public class DeliveredCompressed {
+public class MemoryFriendlyBitSet {
     // there will be 2^16 windows (bitsets) of size maximally 2^16 for each sender
     // when all bits in window are set, the window is set to null and minWindowIdx[senderIndex] is incremented
     // this way we use at most 128 * 2^16 = 2^(7+16) = 2^23 bits ~= 1MB
     BitSet[][] delivered;
     int[] minWindowIdx;
     int numberOfWindows;
-    private int MAX_WINDOW_SIZE = 65536; // 2^16
+    private int MAX_WINDOW_SIZE = 1024; // 65536; // 2^16
 
-    public DeliveredCompressed(int numberOfHosts, int maxWindowSize, int numberOfMessages) {
-        this.MAX_WINDOW_SIZE = maxWindowSize;
+    public MemoryFriendlyBitSet(int numberOfHosts, int numberOfMessages) {
         minWindowIdx = new int[numberOfHosts];
-        int numberOfWindows = numberOfMessages / maxWindowSize + 1;
-        if (numberOfMessages % maxWindowSize != 0) {
+        int numberOfWindows = numberOfMessages / MAX_WINDOW_SIZE + 1;
+        if (numberOfMessages % MAX_WINDOW_SIZE != 0) {
             numberOfWindows++;
         }
         this.numberOfWindows = numberOfWindows;
@@ -27,7 +26,7 @@ public class DeliveredCompressed {
         System.out.println("INIT " + numberOfHosts + " x " + this.numberOfWindows + " x " + MAX_WINDOW_SIZE + " for " + numberOfMessages + " messages");
     }
 
-    public void setDelivered(int senderId, int messageNumber) {
+    public void set(int senderId, int messageNumber) {
         int senderIndex = senderId - 1;
         int messageIndex = messageNumber - 1;
 
@@ -43,14 +42,16 @@ public class DeliveredCompressed {
 
         // if the min window is full, remove it and update the min window index
         if (delivered[senderIndex][minWindowIdx[senderIndex]].get(MAX_WINDOW_SIZE - 1) && delivered[senderIndex][minWindowIdx[senderIndex]].nextClearBit(0) == MAX_WINDOW_SIZE) {
+//            System.out.println("freeing memory senderId " + senderId + " batch index " + messageIndex);
             delivered[senderIndex][minWindowIdx[senderIndex]] = null;
+            System.gc();
             minWindowIdx[senderIndex]++;
             while (delivered[senderIndex][minWindowIdx[senderIndex]] != null && delivered[senderIndex][minWindowIdx[senderIndex]].nextClearBit(0) == MAX_WINDOW_SIZE)
                 minWindowIdx[senderIndex]++;
         }
     }
 
-    public boolean isDelivered(int senderId, int messageNumber) {
+    public boolean isSet(int senderId, int messageNumber) {
         int senderIndex = senderId - 1;
         int messageIndex = messageNumber - 1;
 

@@ -1,4 +1,7 @@
 **/.DS_Store
 VM
 example/output
+*.output
+/template_java/fifo
+
 /template_java/fifo

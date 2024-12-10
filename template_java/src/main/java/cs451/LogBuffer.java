@@ -8,13 +8,12 @@ import java.util.List;
 
 public class LogBuffer {
     private final List<String> buffer;
-    private final int bufferSize;
     private final String filePath;
+    private final int LOG_BUFFER_SIZE = 10000;
 
-    public LogBuffer(int bufferSize, String filePath) throws IOException {
-        this.bufferSize = bufferSize;
+    public LogBuffer(String filePath) throws IOException {
         this.filePath = filePath;
-        this.buffer = new ArrayList<>(bufferSize);
+        this.buffer = new ArrayList<>(LOG_BUFFER_SIZE);
         new FileWriter(filePath, false).close();
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -25,7 +24,7 @@ public class LogBuffer {
 
     public synchronized void log(String message) {
         buffer.add(message);
-        if (buffer.size() >= bufferSize) {
+        if (buffer.size() >= LOG_BUFFER_SIZE) {
             flush();
         }
     }
