@@ -53,8 +53,8 @@ def main():
 
   # check if all output files exist
   for host_id in hosts.keys():
-    output_file = os.path.join(logdir, f"{host_id}.output")
-    # output_file = os.path.join(logdir, f"proc{host_id:02d}.output")
+   # output_file = os.path.join(logdir, f"{host_id}.output")
+    output_file = os.path.join(logdir, f"proc{host_id:02d}.output")
     if host_id == receiver_id:
       receiver_output = output_file
     else:
@@ -101,9 +101,9 @@ def main():
       if errors:
         for error_message_id, error_line_number in errors:
           print(f"ERROR: Duplicate message found: sender_id={sender_id}, message_id={error_message_id}, line_number={error_line_number}")
-        print(f'sender {sender_id} incorrectly logged {line_number} messages. min: {min_message} max: {max_message}')
+        print(f'sender {sender_id} incorrectly logged {len(seen_messages)} messages. min: {min_message} max: {max_message}')
       else:
-        print(f'sender {sender_id} correctly logged {line_number} messages. min: {min_message} max: {max_message}')
+        print(f'sender {sender_id} correctly logged {len(seen_messages)} messages. min: {min_message} max: {max_message}')
   print()
 
   # check correctness of delivered file
@@ -128,7 +128,7 @@ def main():
         print(f"ERROR: Duplicate message found: sender_id={sender_id}, message_id={error_message_id}, line_number={error_line_number}")
       print(f'receiver {receiver_id} incorrectly logged {line_number} messages.')
     else:
-      print(f'receiver {receiver_id} correctly logged {line_number} messages.')
+      print(f'receiver {receiver_id} correctly logged {len(seen_messages)} messages.')
   print()
 
 if __name__ == "__main__":
