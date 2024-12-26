@@ -51,4 +51,11 @@ public class LatticeState {
     }
 
     /* PROPOSER STATE */
+    public void ackReceived(LatticeMessage msg) {
+        proposerStateMap.get(msg.getIteration()).ackReceived(msg);
+    }
+
+    public void nackReceived(LatticeMessage msg) {
+        proposerStateMap.get(msg.getIteration()).nackReceived(msg);
+    }
 }
