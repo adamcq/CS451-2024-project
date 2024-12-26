@@ -58,4 +58,11 @@ public class LatticeState {
     public void nackReceived(LatticeMessage msg) {
         proposerStateMap.get(msg.getIteration()).nackReceived(msg);
     }
+
+    /* BEB BROADCAST */
+    // this method checks if for the current activeProposalNumber, the dstId has acked or nacked the message
+    public boolean hasDstReceivedMessage(int dstId, LatticeMessage msg) {
+        return (proposerStateMap.get(msg.getIteration()).getAcked().get(dstId - 1)
+                || proposerStateMap.get(msg.getIteration()).getNacked().get(dstId - 1));
+    }
 }
