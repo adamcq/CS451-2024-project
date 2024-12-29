@@ -1,14 +1,10 @@
 package cs451;
 
 import cs451.Message.LatticeMessage;
-import cs451.Message.Message;
 
-import java.awt.*;
 import java.io.IOException;
 import java.net.*;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.Set;
 import java.util.concurrent.*;
 
 public class LatticeLink {

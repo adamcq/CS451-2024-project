@@ -17,7 +17,7 @@ public class Proposer {
     }
 
     public void uponNewBroadcastTriggered(ProposerState proposerState) {
-        System.out.println("UPON_NEW_BROADCAST_TRIGGERED !!!!!! iteration=" + proposerState.iteration + " actPropNum=" + proposerState.getActiveProposalNumber());
+//        System.out.println("UPON_NEW_BROADCAST_TRIGGERED !!!!!! iteration=" + proposerState.iteration + " actPropNum=" + proposerState.getActiveProposalNumber());
 
         // Cancel the current task if it is running
 //        stopCurrentBroadcast(proposerState);
@@ -30,7 +30,7 @@ public class Proposer {
         // TODO verify if the updated broadcast is visible by the broadcast thread
 
         // Add the new task to the queue
-        System.out.println("UPDATE BROADCAST CALLING with PARAMS: (proposedValue, proposalNumber, iteration)=(" + proposerState.getProposedValue()+" "+proposerState.getActiveProposalNumber()+" "+proposerState.getIteration()+")");
+//        System.out.println("UPDATE BROADCAST CALLING with PARAMS: (proposedValue, proposalNumber, iteration)=(" + proposerState.getProposedValue()+" "+proposerState.getActiveProposalNumber()+" "+proposerState.getIteration()+")");
         beb.updateBroadcast(proposerState.getProposedValue(), proposerState.getActiveProposalNumber(), proposerState.getIteration());
 
         // stop the loop

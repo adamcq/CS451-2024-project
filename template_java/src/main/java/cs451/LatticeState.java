@@ -1,7 +1,6 @@
 package cs451;
 
 import cs451.Message.LatticeMessage;
-import cs451.Message.Message;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,16 +15,21 @@ public class LatticeState {
     LatticeRunConfig runConfig;
     AcceptorValuesHashMap acceptorValuesHashMap;
     Set<Integer> activeIterationsSet;
-    int maxActiveIterationsThreshold = 3; // TODO change to around 10-100
+    int maxActiveIterationsThreshold = 10; // TODO change to around 10-100
 
     public LatticeState(LatticeRunConfig runConfig, AcceptorValuesHashMap acceptorValuesHashMap) {
         proposerStateMap = new ConcurrentHashMap<>();
         acceptorStateMap = new ConcurrentHashMap<>();
-        this.acceptorValuesHashMap = acceptorValuesHashMap; // should be at most 1000
+        this.acceptorValuesHashMap = acceptorValuesHashMap;
 
         toDeliver = new HashMap<>();
         this.runConfig = runConfig;
         this.activeIterationsSet = new HashSet<>();
+
+        if (runConfig.getNumberOfHosts() <= 5)
+            maxActiveIterationsThreshold = 100;
+        else
+            maxActiveIterationsThreshold = 10;
     }
 
     @Override
@@ -112,7 +116,7 @@ public class LatticeState {
             StringBuilder valueToLog = new StringBuilder();
 //            valueToLog.append(nextToDeliver).append(" d ");
             valueToLog.append("d ");
-            System.out.println("DECIDING toDeliver.size()="+toDeliver.size()+" iteration=" + nextToDeliver + " d " + nextToDeliver + " " + toDeliver.get(nextToDeliver));
+//            System.out.println("DECIDING toDeliver.size()="+toDeliver.size()+" iteration=" + nextToDeliver + " d " + nextToDeliver + " " + toDeliver.get(nextToDeliver));
             for (int i : toDeliver.get(nextToDeliver)) {
                 valueToLog.append(i);
                 valueToLog.append(" ");

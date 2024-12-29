@@ -57,7 +57,7 @@ public class ProposerState {
         // UPON logic
         if (ackCount > runConfig.getNumberOfHosts() / 2 && active) {
 //            System.exit(1);
-            System.out.println("DECIDING " + msg + " ACKED=" + acked + " NACKED=" + nacked + "ackedCount="+ackCount+" nackCount="+nackCount);
+//            System.out.println("DECIDING " + msg + " ACKED=" + acked + " NACKED=" + nacked + "ackedCount="+ackCount+" nackCount="+nackCount);
             decide(proposedValue); // TODO before i had msg.getProposalValue() and that was the ERROR!
             setActive(false);
         }

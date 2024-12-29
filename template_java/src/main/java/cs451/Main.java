@@ -134,7 +134,7 @@ public class Main {
         Parser parser = new Parser(args);
         parser.parse();
 
-        redirectOutputToFile("./lattice/output/stdout_proc" +parser.myId() + ".stdout");
+//        redirectOutputToFile("./lattice/output/stdout_proc" +parser.myId() + ".stdout");
 
         try (BufferedReader reader = new BufferedReader(new FileReader(parser.config()))) {
             // Read the first line to initialize LatticeRunConfig
@@ -187,9 +187,9 @@ public class Main {
 
                 proposer.uponNewBroadcastTriggered(proposerState);
 
-                // TODO find what threshold performs best
+                // TODO find what threshold performs best also what timeout
                 while (latticeState.activeIterationsSet.contains(i+1 - latticeState.maxActiveIterationsThreshold + 1)) {
-                    System.out.println("Active iterations = " + latticeState.activeIterations);
+//                    System.out.println("Active iterations = " + latticeState.activeIterations);
                     Thread.sleep(1);
                 }
 
@@ -270,81 +270,6 @@ public class Main {
 
 //        link.shutdown(); // only when using threads in the link
         System.exit(0);
-
-        // After a process finishes broadcasting,
-        // it waits forever for the delivery of messages.
-        while (true) {
-            // Sleep for 1 hour
-            Thread.sleep(60 * 60 * 1000);
-        }
-    }
-
-    private static void testLinkMain(String[] args) throws Exception{
-        // EXPECTED ARGS: numberOfHosts followed by numberOfHosts integers (port values) followed by hostId
-
-        Parser parser = new Parser(args);
-        parser.parse();
-
-        String cfgPath = parser.config();
-        Scanner scanner = new Scanner(new File(cfgPath));
-        int numberOfMessages = scanner.nextInt();
-
-        RunConfig runConfig = new RunConfig(parser, numberOfMessages);
-        BebState bebState = new BebState(runConfig);
-        TestLink testLink = new TestLink(runConfig, bebState);
-        BEB beb = new BEB(testLink, bebState);
-
-//        ExecutorService processTasksExecutor = Executors.newFixedThreadPool(2);
-
-        Thread receiveThread = new Thread(() -> beb.receive(), "receiveThread");
-        Thread broadcastThread = new Thread(() -> beb.bebBroadcast(), "broadcastThread");
-//        Thread processTasksThread = new Thread(() -> beb.processTasks(), "processTasksThread");
-
-
-//        receiverExecutor.submit(() -> beb.receive());
-        System.out.println("GOGOMAN tC SINF");
-//        processTasksThread.start();
-//        processTasksExecutor.submit(() -> beb.processTasks());
-        receiveThread.start();
-        broadcastThread.start();
-
-        // After a process finishes broadcasting,
-        // it waits forever for the delivery of messages.
-        while (true) {
-            // Sleep for 1 hour
-            Thread.sleep(60 * 60 * 1000);
-        }
-    }
-
-
-    private static void BEBMain(String[] args) throws Exception{
-        Parser parser = new Parser(args);
-        parser.parse();
-
-        // read config
-        String cfgPath = parser.config();
-        Integer[] configInfo = getFifoConfigInfo(cfgPath);
-        Integer numberOfMessages = configInfo[0];
-
-        if (numberOfMessages == null) {
-            System.err.println("Config file parsed incorrectly.");
-            System.exit(1);
-        }
-
-        /* sender & receiver logic */
-        RunConfig runConfig = new RunConfig(parser, numberOfMessages);
-
-        // BEB
-        FifoBroadcast bestEffortBroadcast = new FifoBroadcast(runConfig);
-        Thread receiverThread = new Thread(bestEffortBroadcast::receive, "ReceiverThread");
-//        Thread broadcastThread = new Thread(bestEffortBroadcast::broadcast, "BroadcastThread");
-
-        Thread[] threads = new Thread[] {receiverThread};
-        initSignalHandlers(runConfig.getLogBuffer(), runConfig.getSocket(), threads);
-
-        receiverThread.start();
-//        broadcastThread.start();
-        bestEffortBroadcast.broadcast();
 
         // After a process finishes broadcasting,
         // it waits forever for the delivery of messages.
