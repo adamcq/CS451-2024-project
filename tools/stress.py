@@ -134,7 +134,7 @@ class LatticeAgreementValidation:
             for i in range(1, self.procs + 1):
                 hosts.write("{} localhost {}\n".format(i, PROCESSES_BASE_IP + i))
 
-        maxint = 2**31 - 1
+        maxint = self.dval #2**31 - 1
         seeded_rand = random.Random(42)
         try:
             values = seeded_rand.sample(range(0, maxint + 1), self.dval)
@@ -491,11 +491,11 @@ if __name__ == "__main__":
 
     testConfig = {
         "concurrency": 8,  # How many threads are interferring with the running processes
-        "attempts": 0,  # How many interferring attempts each threads does
+        "attempts": 8,  # How many interferring attempts each threads does
         "attemptsDistribution": {  # Probability with which an interferring thread will
-            "STOP": 0.05,  # select an interferring action (make sure they add up to 1)
-            "CONT": 0.9,
-            "TERM": 0.05,
+            "STOP": 0.5,  # select an interferring action (make sure they add up to 1)
+            "CONT": 0.5,
+            "TERM": 0.0,
         },
     }
 
