@@ -17,15 +17,31 @@ public class Proposer {
     }
 
     public void uponNewBroadcastTriggered(ProposerState proposerState) {
-        System.out.println("UPON_NEW_BROADCAST_TRIGGERED !!!!!!");
+        System.out.println("UPON_NEW_BROADCAST_TRIGGERED !!!!!! iteration=" + proposerState.iteration + " actPropNum=" + proposerState.getActiveProposalNumber());
 
         // Cancel the current task if it is running
-        stopCurrentBroadcast(proposerState);
+//        stopCurrentBroadcast(proposerState);
 
         // Submit a new broadcast task
-        currentTask = executor.submit(() -> {
-            beb.bebBroadcast(MessageType.PROPOSAL, proposerState.getProposedValue(), proposerState.getActiveProposalNumber());
-        });
+//        currentTask = executor.submit(() -> {
+//            beb.bebBroadcast(MessageType.PROPOSAL, proposerState.getProposedValue(), proposerState.getActiveProposalNumber(), proposerState.iteration);
+//        });
+
+        // TODO verify if the updated broadcast is visible by the broadcast thread
+
+        // Add the new task to the queue
+        System.out.println("UPDATE BROADCAST CALLING with PARAMS: (proposedValue, proposalNumber, iteration)=(" + proposerState.getProposedValue()+" "+proposerState.getActiveProposalNumber()+" "+proposerState.getIteration()+")");
+        beb.updateBroadcast(proposerState.getProposedValue(), proposerState.getActiveProposalNumber(), proposerState.getIteration());
+
+        // stop the loop
+//        Thread.currentThread().interrupt();
+//        System.out.println("Thread stopped");
+
+        // Interrupt the thread to refresh the loop
+//        stopCurrentBroadcast(proposerState);
+
+        // submit the loop again
+//        currentTask = executor.submit(beb::startBroadcastLoop);
     }
 
     public void stopCurrentBroadcast(ProposerState proposerState) {
@@ -34,14 +50,14 @@ public class Proposer {
         }
     }
 
-    public void uponProposerStateInitialized(ProposerState proposerState) {
-        currentTask = executor.submit(() -> {
-            beb.bebBroadcast(MessageType.PROPOSAL, proposerState.getProposedValue(), proposerState.getActiveProposalNumber());
-        });
+    public void startBroadcastLoop() {
+        currentTask = executor.submit(beb::startBroadcastLoop);
+        System.out.println("Submitted startBroadcastLoop to the executor");
     }
 
     public void shutdown() {
         // Gracefully shut down the executor
+        System.out.println("Shutting down the broadcast executor");
         executor.shutdownNow();
     }
 }

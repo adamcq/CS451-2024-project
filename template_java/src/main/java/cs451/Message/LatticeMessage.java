@@ -9,14 +9,16 @@ public class LatticeMessage {
     int senderId;
     int relayId;
     int proposalNumber;
+    int iteration;
     int setSize;
     Set<Integer> proposalValue;
 
-    public LatticeMessage(byte messageType, int senderId, int relayId, int proposalNumber, int setSize, Set<Integer> proposalValue) {
+    public LatticeMessage(byte messageType, int senderId, int relayId, int proposalNumber, int iteration, int setSize, Set<Integer> proposalValue) {
         this.messageType = messageType;
         this.senderId = senderId;
         this.relayId = relayId;
         this.proposalNumber = proposalNumber;
+        this.iteration = iteration;
         this.setSize = setSize;
         this.proposalValue = proposalValue;
     }
@@ -27,6 +29,7 @@ public class LatticeMessage {
                 Integer.BYTES + // senderId
                 Integer.BYTES + // relayId
                 Integer.BYTES + // proposalNumber
+                Integer.BYTES + // iteration
                 Integer.BYTES + // setSize
                 Integer.BYTES * proposalValue.size(); // proposalValue elements
 
@@ -37,6 +40,7 @@ public class LatticeMessage {
         buffer.putInt(senderId);
         buffer.putInt(relayId);
         buffer.putInt(proposalNumber);
+        buffer.putInt(iteration);
         buffer.putInt(setSize);
 
         // Serialize proposalValue set
@@ -55,6 +59,7 @@ public class LatticeMessage {
         int senderId = buffer.getInt();
         int relayId = buffer.getInt();
         int proposalNumber = buffer.getInt();
+        int iteration = buffer.getInt();
         int setSize = buffer.getInt();
 
         // Deserialize proposalValue set
@@ -63,7 +68,7 @@ public class LatticeMessage {
             proposalValue.add(buffer.getInt());
         }
 
-        return new LatticeMessage(messageType, senderId, relayId, proposalNumber, setSize, proposalValue);
+        return new LatticeMessage(messageType, senderId, relayId, proposalNumber, iteration, setSize, proposalValue);
     }
 
     public static byte deserializeType(byte[] data) {
@@ -98,9 +103,15 @@ public class LatticeMessage {
     public int getProposalNumber() {
         return proposalNumber;
     }
+    public int getIteration() {
+        return iteration;
+    }
 
     public void setProposalNumber(int proposalNumber) {
         this.proposalNumber = proposalNumber;
+    }
+    public void setIteration(int iteration) {
+        this.iteration = iteration;
     }
 
     public int getSetSize() {
@@ -119,6 +130,7 @@ public class LatticeMessage {
         this.proposalValue = proposalValue;
     }
 
+
     @Override
     public String toString() {
         return "LatticeMessage{" +
@@ -126,6 +138,7 @@ public class LatticeMessage {
                 ", senderId=" + senderId +
                 ", relayId=" + relayId +
                 ", proposalNumber=" + proposalNumber +
+                ", iteration=" + iteration +
                 ", setSize=" + setSize +
                 ", proposalValue=" + proposalValue +
                 '}';

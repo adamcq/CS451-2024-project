@@ -1,12 +1,19 @@
 package cs451;
 
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
 public class AcceptorState {
     private Set<Integer> acceptedValue;
-    public AcceptorState() {
+    private int[] maxSeenProposalNumberFrom;
+    private Set<Integer> toNack;
+    public AcceptorState(Set<Integer> initialProposal) {
         this.acceptedValue = new HashSet<>();
+        this.acceptedValue.addAll(initialProposal);
+
+        toNack = new HashSet<>();
+        maxSeenProposalNumberFrom = new int[128];
     }
 
     public boolean containsProposedValue(Set<Integer> proposedValue) {
@@ -19,5 +26,34 @@ public class AcceptorState {
 
     public Set<Integer> getAcceptedValue() {
         return acceptedValue;
+    }
+
+    public void setMaxSeenProposalNumberFrom(int proposalNumber, int senderId) {
+        this.maxSeenProposalNumberFrom[senderId - 1] = proposalNumber;
+    }
+
+    public int getMaxSeenProposalNumberFrom(int senderId) {
+        return maxSeenProposalNumberFrom[senderId - 1];
+    }
+
+    public int[] getMaxSeenProposalNumberFromAll() {
+        return maxSeenProposalNumberFrom;
+    }
+    public void addToNack(int senderId) {
+        toNack.add(senderId);
+    }
+
+    public Set<Integer> getToNack() {
+        return toNack;
+    }
+    public void resetToNack(int senderId) {
+        toNack.remove(senderId);
+    }
+
+    @Override
+    public String toString() {
+        return "AcceptorState{" +
+                "acceptedValue=" + acceptedValue +
+                '}';
     }
 }

@@ -19,6 +19,16 @@ public class LatticeState {
         acceptorStateMap = new HashMap<>();
     }
 
+    @Override
+    public String toString() {
+        return "LatticeState{" +
+                "proposerStateMap=" + proposerStateMap +
+                ", acceptorStateMap=" + acceptorStateMap +
+                ", maxIteration=" + maxIteration +
+                ", activeIterations=" + activeIterations +
+                '}';
+    }
+
     public void addIteration(int iteration, ProposerState proposerState, AcceptorState acceptorState) {
         System.out.println("STATE containsIteration (iter, proposerState, acceptorState): (" + iteration + " " + proposerStateMap.containsKey(iteration) + ", " + acceptorStateMap.containsKey(iteration) + ")");
         if (!proposerStateMap.containsKey(iteration)) {
@@ -30,13 +40,20 @@ public class LatticeState {
     }
 
     public void removeIteration(int iteration) {
+        System.out.println("LatticeState removing iteration " + iteration);
+        System.out.println("state: " + this);
         proposerStateMap.remove(iteration);
-        acceptorStateMap.remove(iteration);
+        acceptorStateMap.remove(iteration); // TODO this needs to be removed at some point for memory reasons - perhaps a bitset to keep track or use the vs/ds values to see if all are in accepted
         activeIterations--;
     }
 
     public boolean iterationReached(int iteration) {
         return iteration <= maxIteration;
+    }
+
+    public boolean iterationComplete(int iteration) {
+//        return !acceptorStateMap.containsKey(iteration);
+        return !proposerStateMap.containsKey(iteration); // TODO this is just debug, uncomment this and remove line above
     }
 
     /* ACCEPTOR STATE */
@@ -64,5 +81,9 @@ public class LatticeState {
     public boolean hasDstReceivedMessage(int dstId, LatticeMessage msg) {
         return (proposerStateMap.get(msg.getIteration()).getAcked().get(dstId - 1)
                 || proposerStateMap.get(msg.getIteration()).getNacked().get(dstId - 1));
+    }
+
+    public boolean isMessageDelivered(LatticeMessage msg) { // TODO check if this is correct
+        return (!proposerStateMap.get(msg.getIteration()).isActive());
     }
 }

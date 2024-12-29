@@ -134,7 +134,7 @@ public class Main {
         Parser parser = new Parser(args);
         parser.parse();
 
-        redirectOutputToFile("./lattice/output/stdout_proc" +parser.myId() + ".log");
+        redirectOutputToFile("./lattice/output/stdout_proc" +parser.myId() + ".stdout");
 
         try (BufferedReader reader = new BufferedReader(new FileReader(parser.config()))) {
             // Read the first line to initialize LatticeRunConfig
@@ -153,6 +153,14 @@ public class Main {
             int uniqueNumbersCount = Integer.parseInt(configValues[2]);
 
             LatticeRunConfig runConfig = new LatticeRunConfig(parser, numberOfIterations, maxProposalSize, uniqueNumbersCount);
+            LatticeState latticeState = new LatticeState();
+
+            LatticeLink latticeLink = new LatticeLink(runConfig, latticeState);
+            ProposerBEB proposerBEB = new ProposerBEB(latticeLink, latticeState, runConfig);
+            Proposer proposer = new Proposer(proposerBEB, runConfig);
+            proposer.startBroadcastLoop();
+            Thread receiveThread = new Thread(latticeLink::receive, "receiveThread");
+            receiveThread.start();
 
             // Process remaining lines iteratively
             for (int i = 0; i < numberOfIterations; i++) {
@@ -166,25 +174,45 @@ public class Main {
                 for (String numberString : numberStrings) {
                     initialProposal.add(Integer.parseInt(numberString));
                 }
-                System.out.println("Processing line " + (i + 1) + ": " + line);
+                System.out.println("Processing line " + (i + 1) + ": line=" + line + " initialProposal=" + initialProposal);
 
-                AcceptorState acceptorState = new AcceptorState();
-                ProposerState proposerState = new ProposerState(initialProposal, runConfig);
-                LatticeLink latticeLink = new LatticeLink(runConfig, proposerState, acceptorState);
-                ProposerBEB proposerBEB = new ProposerBEB(latticeLink, proposerState, runConfig);
-                Proposer proposer = new Proposer(proposerBEB, runConfig);
+                // init iteration classes
+                AcceptorState acceptorState = new AcceptorState(initialProposal);
+                ProposerState proposerState = new ProposerState(initialProposal, runConfig, proposer, i+1);
+                latticeState.addIteration(i+1, proposerState, acceptorState);
 
-                Thread receiveThread = new Thread(latticeLink::receive, "receiveThread");
-                receiveThread.start();
-                proposerState.setProposer(proposer); // adding this last reference triggers initial broadcast
+                proposer.uponNewBroadcastTriggered(proposerState);
+
+
+//                LatticeLink latticeLink = new LatticeLink(runConfig, proposerState, acceptorState);
+//                ProposerBEB proposerBEB = new ProposerBEB(latticeLink, proposerState, runConfig);
+//                Proposer proposer = new Proposer(proposerBEB, runConfig);
+
+                // init iteration functions
+//                Thread receiveThread = new Thread(latticeLink::receive, "receiveThread");
+//                receiveThread.start();
+
+//                proposerState.setProposer(proposer); // adding this last reference triggers initial broadcast // TODO change
+//                receiveThread.join();
+//                latticeLink.receive();
 
                 // TODO implement proposerBEB
                 // TODO handle multishot - I likely need to include the iteration in the payload as well
                 // TODO multishot logic - do I start broadcasting the next one right after delivery? Do I wait?
             }
 
+            // After a process finishes broadcasting,
+            // it waits forever for the delivery of messages.
+            while (true) {
+                // Sleep for 1 hour
+                Thread.sleep(60 * 60 * 1000);
+            }
+
+
         } catch (IOException e) {
             e.printStackTrace();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
 
 

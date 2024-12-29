@@ -6,28 +6,37 @@ import java.util.BitSet;
 import java.util.Set;
 
 public class ProposerState {
-    boolean active = false;
+    boolean active = true;
     int ackCount = 0;
     int nackCount = 0;
-    BitSet acked = new BitSet();
-    BitSet nacked = new BitSet();
+    BitSet acked;
+    BitSet nacked;
     int activeProposalNumber = 0;
     Set<Integer> proposedValue;
     Proposer proposer;
     LatticeRunConfig runConfig;
-    public ProposerState(Set<Integer> proposal,  LatticeRunConfig runConfig) {
+    int iteration;
+    // TODO implement hashmap {iteration: ProposerState} - remove after decided - control the logic in main based on the size (max 5 at the same time, etc.)
+    public ProposerState(Set<Integer> proposal,  LatticeRunConfig runConfig, Proposer proposer, int iteration) {
         proposedValue = proposal;
         active = true;
         activeProposalNumber++;
         ackCount = 0;
         nackCount = 0;
         this.runConfig = runConfig;
+        this.iteration = iteration;
+        this.proposer = proposer;
+
+        this.nacked = new BitSet();
+        this.acked = new BitSet();
+        ackReceived(new LatticeMessage((byte) 1, runConfig.getProcessId(), runConfig.getProcessId(), 1, iteration, proposal.size(), proposal));
     }
 
-    public void setProposer(Proposer proposer) {
-        this.proposer = proposer;
-        proposer.uponProposerStateInitialized(this);
-    }
+//    public void setProposer(Proposer proposer) {
+//        this.proposer = proposer;
+//        proposer.uponProposerStateInitialized(this);
+//    }
+
 
     public void ackReceived(LatticeMessage msg) {
         System.out.println("ACK received step 2 " + msg + " " + activeProposalNumber);
@@ -35,7 +44,7 @@ public class ProposerState {
             return;
 
         // CUSTOM - ignore duplicate ACK for this round
-        if (acked.get(msg.getRelayId() - 1) || nacked.get(msg.getRelayId() - 1))
+        if (acked.get(msg.getRelayId() - 1) || nacked.get(msg.getRelayId() - 1) || iteration != msg.getIteration())
             return;
 
 //        System.out.println("ACK received for " + msg);
@@ -45,12 +54,10 @@ public class ProposerState {
 
         // UPON logic
         if (ackCount > runConfig.getNumberOfHosts() / 2 && active) {
-//            System.out.println("ACKED set " + acked);
 //            System.exit(1);
-            System.out.println("DECIDING " + msg);
-            decide(msg.getProposalValue());
+            System.out.println("DECIDING " + msg + " ACKED=" + acked + " NACKED=" + nacked + "ackedCount="+ackCount+" nackCount="+nackCount);
+            decide(proposedValue); // TODO before i had msg.getProposalValue() and that was the ERROR!
             setActive(false);
-            proposer.stopCurrentBroadcast(this);
         }
 
         if (nackCount > 0 && ackCount + ackCount > runConfig.getNumberOfHosts() / 2 && active) { // TODO active should also check integer (MAYBE)
@@ -71,15 +78,18 @@ public class ProposerState {
             return;
 
         // CUSTOM - ignore duplicate NACK for this round
-        if (acked.get(msg.getRelayId() - 1) || nacked.get(msg.getRelayId() - 1))
+        if (acked.get(msg.getRelayId() - 1) || nacked.get(msg.getRelayId() - 1) || iteration != msg.getIteration())
             return;
 
+        System.out.println("TODO REMOVE THE LINE BELOW " + proposedValue + " msg=" + msg);
         Set<Integer> newProposalValue = updateProposalValue(msg.getProposalValue());
+        System.out.println("TODO REMOVE THE LINE ABOVE " + proposedValue);
+//        Set<Integer> newProposalValue = updateProposalValue(msg.getProposalValue());
         addNacked(msg.getRelayId());
 
         // UPON logic
         if (nackCount > 0 && ackCount + nackCount > runConfig.getNumberOfHosts() / 2 && active) {
-            System.out.println("REBROADCASTING2 ackCount="+ackCount+" nackCount="+nackCount+" acked="+acked+" nacked"+nacked + "proposedValue="+proposedValue);
+            System.out.println("REBROADCASTING2 iteration="+iteration+"ackCount="+ackCount+" nackCount="+nackCount+" acked="+acked+" nacked"+nacked + "proposedValue="+proposedValue);
             incrementActiveProposalNumber();
             resetNacked();
             resetAcked();
@@ -129,7 +139,7 @@ public class ProposerState {
     private void decide(Set<Integer> value) {
         System.out.println("decide called");
         StringBuilder valueToLog = new StringBuilder();
-        valueToLog.append("d ");
+        valueToLog.append(iteration).append(" d ");
         for (int i : value) {
             valueToLog.append(i);
             valueToLog.append(" ");
@@ -183,5 +193,25 @@ public class ProposerState {
 
     public BitSet getNacked() {
         return nacked;
+    }
+
+    public int getIteration() {
+        return iteration;
+    }
+
+    @Override
+    public String toString() {
+        return "ProposerState{" +
+                "active=" + active +
+                ", ackCount=" + ackCount +
+                ", nackCount=" + nackCount +
+                ", acked=" + acked +
+                ", nacked=" + nacked +
+                ", activeProposalNumber=" + activeProposalNumber +
+                ", proposedValue=" + proposedValue +
+                ", proposer=" + proposer +
+                ", runConfig=" + runConfig +
+                ", iteration=" + iteration +
+                '}';
     }
 }

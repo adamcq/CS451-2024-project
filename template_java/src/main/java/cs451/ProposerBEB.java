@@ -3,57 +3,82 @@ package cs451;
 import cs451.Message.LatticeMessage;
 
 import java.net.SocketException;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class ProposerBEB {
 
-    cs451.LatticeLink latticeLink;
-    int sentMessages;
-    int sentAcks;
-    int sentTotal;
-    int receivedAcks;
-    int receivedMessages;
-    int receivedTotal;
-    ProposerState proposerState;
-    int broadcastTotal;
+    LatticeLink latticeLink;
+    LatticeState latticeState;
     LatticeRunConfig runConfig;
     private volatile boolean stopBroadcast = false; // Flag to stop the broadcast loop
+    private final Map<Integer, AbstractMap.SimpleEntry<LatticeMessage, byte[]>> messages;
 
 
 
-    public ProposerBEB(LatticeLink latticeLink, ProposerState proposerState, LatticeRunConfig runConfig) throws SocketException {
+    public ProposerBEB(LatticeLink latticeLink, LatticeState latticeState, LatticeRunConfig runConfig) throws SocketException {
         this.runConfig = runConfig;
         this.latticeLink = latticeLink;
-        this.proposerState = proposerState;
-
-//        testLink.runConfig.getSocket().setSoTimeout(100);
+        this.latticeState = latticeState;
+        this.messages = new ConcurrentHashMap<>();
     }
 
-    public void bebBroadcast(MessageType messageType, Set<Integer> proposerValue, int activeProposalNumber) {
-        System.out.println("BEB broadcast called with: " + MessageType.PROPOSAL + " " + proposerState.getProposedValue() + " " + proposerState.getActiveProposalNumber());
-        LatticeMessage msg = new LatticeMessage((byte) 0, runConfig.getProcessId(), runConfig.getProcessId(), activeProposalNumber, proposerValue.size(), proposerValue);
+    public void updateBroadcast(Set<Integer> proposerValue, int activeProposalNumber, int iteration) {
+        // build msg
+        LatticeMessage msg = new LatticeMessage((byte) 0, runConfig.getProcessId(), runConfig.getProcessId(), activeProposalNumber, iteration, proposerValue.size(), proposerValue);
         byte[] data = msg.serialize();
 
-        while (!Thread.currentThread().isInterrupted()) {
-            Set<Integer> debugReceivers = new HashSet<>();
-            for (int dstId = 1; dstId <= runConfig.getNumberOfHosts(); dstId++) {
-//                if (dstId == latticeLink.hostId) // TODO this can only be done if I always ack from self right after broadcast - implement this!
-//                    continue;
+        // update messages
+//        synchronized (messages) {
+        messages.put(iteration, new AbstractMap.SimpleEntry<>(msg, data));
+//        }
 
-                if (!(proposerState.getAcked().get(dstId - 1) || proposerState.getNacked().get(dstId - 1))) {
-                    debugReceivers.add(dstId);
-                    latticeLink.send(data, dstId);
+        System.out.println("Updating beb (inserting to iteration) " + iteration +": ");
+        for (AbstractMap.SimpleEntry entry : messages.values()) {
+            System.out.println("\t" + entry.getKey());
+        }
+        System.out.println();
+    }
+
+    public void startBroadcastLoop() {
+        broadcastLoop();
+        System.out.println("Broadcast loop interrupted 2");
+    }
+
+    private void broadcastLoop() {
+        System.out.println("Broadcast loop started");
+        while (true) { // TODO instead check when sbd wants to update activepropnumber, update the set and restart loop - loop should internally iterate thru set of messsages for each ITERATION simultaneously
+//            System.out.println("beb looop inside messagesCount=" + messages.size() + " timestampMillis=" + System.currentTimeMillis());
+            for (Map.Entry<Integer, AbstractMap.SimpleEntry<LatticeMessage, byte[]>> entry : messages.entrySet()) {
+                Set<Integer> debugReceivers = new HashSet<>();
+                LatticeMessage msg = entry.getValue().getKey();
+
+                if (latticeState.isMessageDelivered(msg)) {
+                    System.out.println("Removing message from BROADCAST. acked by: " + latticeState.proposerStateMap.get(msg.getIteration()).getAcked() + " msg: " + msg);
+                    messages.remove(msg.getIteration());
+//                    latticeState.removeIteration(msg.getIteration()); // TODO debug - uncomment this
+                    break; // TODO verify if the break should be here
                 }
+
+                for (int dstId = 1; dstId <= runConfig.getNumberOfHosts(); dstId++) {
+                    if (dstId == latticeLink.hostId)
+                        continue;
+
+                    if (!latticeState.hasDstReceivedMessage(dstId, msg)) {
+                        debugReceivers.add(dstId);
+                        latticeLink.send(entry.getValue().getValue(), dstId);
+                    }
+                }
+                System.out.println("Sending MSG " + msg + " to " + debugReceivers);
+                debugReceivers.clear();
             }
-            System.out.println("Sending MSG " + LatticeMessage.deserialize(data) + " proposerState proposal value " + proposerState.getProposedValue() + " to " + debugReceivers);
-            debugReceivers.clear();
 
 //            try {
-//                Thread.sleep(1000);
+//                Thread.sleep(50);
 //            } catch (InterruptedException e) {
 //                throw new RuntimeException(e);
 //            }
         }
+//        System.out.println("Broadcast loop interrupted");
     }
 }
