@@ -41,7 +41,7 @@ public class ProposerState {
 
 
     public void ackReceived(LatticeMessage msg) {
-        System.out.println("ACK received step 2 " + msg + " " + activeProposalNumber);
+//        System.out.println("ACK received step 2 " + msg + " " + activeProposalNumber);
         if (msg.getProposalNumber() != activeProposalNumber)
             return;
 
@@ -63,7 +63,7 @@ public class ProposerState {
         }
 
         if (nackCount > 0 && ackCount + ackCount > runConfig.getNumberOfHosts() / 2 && active) { // TODO active should also check integer (MAYBE)
-            System.out.println("REBROADCASTING1 ackCount="+ackCount+" nackCount="+nackCount+" acked="+acked+" nacked"+nacked + "proposedValue="+proposedValue);
+//            System.out.println("REBROADCASTING1 ackCount="+ackCount+" nackCount="+nackCount+" acked="+acked+" nacked"+nacked + "proposedValue="+proposedValue);
             incrementActiveProposalNumber();
             resetNacked();
             resetAcked();
@@ -77,7 +77,7 @@ public class ProposerState {
     }
 
     public void nackReceived(LatticeMessage msg) {
-        System.out.println("msg.proposalNum="+msg.getProposalNumber()+" activePropNum="+activeProposalNumber+" acked="+acked+" nacked="+nacked+" ackCount="+ackCount+" nackCount="+nackCount+" iteration="+iteration);
+//        System.out.println("msg.proposalNum="+msg.getProposalNumber()+" activePropNum="+activeProposalNumber+" acked="+acked+" nacked="+nacked+" ackCount="+ackCount+" nackCount="+nackCount+" iteration="+iteration);
         if (msg.getProposalNumber() != activeProposalNumber)
             return;
 
@@ -85,15 +85,15 @@ public class ProposerState {
         if (acked.get(msg.getRelayId() - 1) || nacked.get(msg.getRelayId() - 1) || iteration != msg.getIteration())
             return;
 
-        System.out.println("TODO REMOVE THE LINE BELOW " + proposedValue + " msg=" + msg);
+//        System.out.println("TODO REMOVE THE LINE BELOW " + proposedValue + " msg=" + msg);
         Set<Integer> newProposalValue = updateProposalValue(msg.getProposalValue());
-        System.out.println("TODO REMOVE THE LINE ABOVE " + proposedValue);
+//        System.out.println("TODO REMOVE THE LINE ABOVE " + proposedValue);
 //        Set<Integer> newProposalValue = updateProposalValue(msg.getProposalValue());
         addNacked(msg.getRelayId());
 
         // UPON logic
         if (nackCount > 0 && ackCount + nackCount > runConfig.getNumberOfHosts() / 2 && active) {
-            System.out.println("REBROADCASTING2 iteration="+iteration+"ackCount="+ackCount+" nackCount="+nackCount+" acked="+acked+" nacked"+nacked + "proposedValue="+proposedValue);
+//            System.out.println("REBROADCASTING2 iteration="+iteration+"ackCount="+ackCount+" nackCount="+nackCount+" acked="+acked+" nacked"+nacked + "proposedValue="+proposedValue);
             incrementActiveProposalNumber();
             resetNacked();
             resetAcked();
@@ -142,7 +142,7 @@ public class ProposerState {
     }
 
     private void decide(Set<Integer> value) {
-        System.out.println("decide called");
+//        System.out.println("decide called");
 
         latticeState.waitForDeliver(iteration, value);
     }

@@ -175,10 +175,10 @@ public class Main {
                 for (String numberString : numberStrings) {
                     initialProposal.add(Integer.parseInt(numberString));
                 }
-                System.out.println("Processing line " + (i + 1) + ": line=" + line + " initialProposal=" + initialProposal);
+//                System.out.println("Processing line " + (i + 1) + ": line=" + line + " initialProposal=" + initialProposal);
                 for (int number : initialProposal)
                     acceptorValuesHashMap.getOrAddHashIndex(number);
-                System.out.println("acceptorValuesHashMap="+acceptorValuesHashMap);
+//                System.out.println("acceptorValuesHashMap="+acceptorValuesHashMap);
 
                 // init iteration classes
                 AcceptorState acceptorState = new AcceptorState(initialProposal, latticeState);

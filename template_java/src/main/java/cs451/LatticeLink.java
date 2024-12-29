@@ -131,7 +131,7 @@ public class LatticeLink {
     private void handleMessage(byte[] data) {
         LatticeMessage msg = LatticeMessage.deserialize(data);
         msg.setRelayId(runConfig.getProcessId());
-        System.out.println("handleMESSAGE !latticeState.iterationReached(msg.getIteration()) || latticeState.iterationComplete(msg.getIteration()) = " + (!latticeState.iterationReached(msg.getIteration())) + " " + latticeState.iterationComplete(msg.getIteration()) + " maxIterSeen=" + latticeState.maxIteration + " msgIter="+msg.getIteration());
+//        System.out.println("handleMESSAGE !latticeState.iterationReached(msg.getIteration()) || latticeState.iterationComplete(msg.getIteration()) = " + (!latticeState.iterationReached(msg.getIteration())) + " " + latticeState.iterationComplete(msg.getIteration()) + " maxIterSeen=" + latticeState.maxIteration + " msgIter="+msg.getIteration());
 
         if (!latticeState.iterationReached(msg.getIteration())) // TODO this was there before -> || latticeState.iterationComplete(msg.getIteration())
             return;
@@ -140,46 +140,46 @@ public class LatticeLink {
         //  if the 2nd time you see (iteration, senderId, proposalNumber) & it is in
 
         AcceptorState acceptorState = latticeState.acceptorStateMap.get(msg.getIteration());
-        System.out.println("handlemsg " + " data[0]=" + data[0] + " msg=" + msg + "acceptor=" + latticeState.acceptorStateMap.get(msg.getIteration()).getAcceptedValue() + "toNack=" + acceptorState.getToNack() + "maxPropNumFrom=" + Arrays.toString(acceptorState.getMaxSeenProposalNumberFromAll()));
+//        System.out.println("handlemsg " + " data[0]=" + data[0] + " msg=" + msg + "acceptor=" + latticeState.acceptorStateMap.get(msg.getIteration()).getAcceptedValue() + "toNack=" + acceptorState.getToNack() + "maxPropNumFrom=" + Arrays.toString(acceptorState.getMaxSeenProposalNumberFromAll()));
 
         // reset toNack set if the new msg.proposalNumber is bigger than anything seen before
         if (acceptorState.getMaxSeenProposalNumberFrom(msg.getSenderId()) < msg.getProposalNumber()) {
-            System.out.println("RESETTING toNack iteration " + msg.getIteration() + " senderId " + msg.getSenderId() + " from " + acceptorState.getMaxSeenProposalNumberFrom(msg.getSenderId()) + " to " + msg.getProposalNumber() + " resetting toNack from " + acceptorState.getToNack() + " to {}");
+//            System.out.println("RESETTING toNack iteration " + msg.getIteration() + " senderId " + msg.getSenderId() + " from " + acceptorState.getMaxSeenProposalNumberFrom(msg.getSenderId()) + " to " + msg.getProposalNumber() + " resetting toNack from " + acceptorState.getToNack() + " to {}");
             acceptorState.resetToNack(msg.getSenderId());
             acceptorState.setMaxSeenProposalNumberFrom(msg.getProposalNumber(), msg.getSenderId());
         }
 
         if (latticeState.containsProposedValue(msg) && !acceptorState.getToNack().contains((msg.getSenderId()))) {
             sendAck(msg);
-            System.out.println("VAL (ACK) received " + msg.getProposalValue() + " msg " + msg);
-            System.out.println("VAL (ACK) had " + acceptorState.getAcceptedValue() + " msg " + msg);
+//            System.out.println("VAL (ACK) received " + msg.getProposalValue() + " msg " + msg);
+//            System.out.println("VAL (ACK) had " + acceptorState.getAcceptedValue() + " msg " + msg);
         } else {
             acceptorState.addToNack((msg.getSenderId()));
-            System.out.println("VAL (NACK) received " + msg.getProposalValue() + " msg " + msg);
-            System.out.println("VAL (NACK) had " + acceptorState.getAcceptedValue() + " msg " + msg);
+//            System.out.println("VAL (NACK) received " + msg.getProposalValue() + " msg " + msg);
+//            System.out.println("VAL (NACK) had " + acceptorState.getAcceptedValue() + " msg " + msg);
             latticeState.addToAccepted(msg);
             msg.setProposalValue(latticeState.getAcceptedValue(msg));
             msg.setSetSize(msg.getProposalValue().size());
             sendNack(msg);
-            System.out.println("handlemsg " + msg + "acceptor=" + acceptorState.getAcceptedValue() + "NACK");
+//            System.out.println("handlemsg " + msg + "acceptor=" + acceptorState.getAcceptedValue() + "NACK");
         }
     }
 
     private void handleAck(byte[] data) {
         LatticeMessage msg = LatticeMessage.deserialize(data);
-        System.out.println("handleACK !latticeState.iterationReached(msg.getIteration()) || latticeState.iterationComplete(msg.getIteration()) = " + (!latticeState.iterationReached(msg.getIteration())) + " " + latticeState.iterationComplete(msg.getIteration()));
+//        System.out.println("handleACK !latticeState.iterationReached(msg.getIteration()) || latticeState.iterationComplete(msg.getIteration()) = " + (!latticeState.iterationReached(msg.getIteration())) + " " + latticeState.iterationComplete(msg.getIteration()));
         if (!latticeState.iterationReached(msg.getIteration()) || latticeState.iterationComplete(msg.getIteration()))
             return;
-        System.out.println("ACK received " + msg + " acked " + latticeState.proposerStateMap.get(msg.getIteration()).getAcked() + " nacked " + latticeState.proposerStateMap.get(msg.getIteration()).getNacked());
+//        System.out.println("ACK received " + msg + " acked " + latticeState.proposerStateMap.get(msg.getIteration()).getAcked() + " nacked " + latticeState.proposerStateMap.get(msg.getIteration()).getNacked());
         latticeState.ackReceived(msg);
     }
 
     private void handleNack(byte[] data) {
         LatticeMessage msg = LatticeMessage.deserialize(data);
-        System.out.println("handleNACK !latticeState.iterationReached(msg.getIteration()) || latticeState.iterationComplete(msg.getIteration()) = " + (!latticeState.iterationReached(msg.getIteration())) + " " + latticeState.iterationComplete(msg.getIteration()));
+//        System.out.println("handleNACK !latticeState.iterationReached(msg.getIteration()) || latticeState.iterationComplete(msg.getIteration()) = " + (!latticeState.iterationReached(msg.getIteration())) + " " + latticeState.iterationComplete(msg.getIteration()));
         if (!latticeState.iterationReached(msg.getIteration()) || latticeState.iterationComplete(msg.getIteration()))
             return;
-        System.out.println("NACK received " + msg + " acked " + latticeState.proposerStateMap.get(msg.getIteration()).getAcked() + " nacked " + latticeState.proposerStateMap.get(msg.getIteration()).getNacked());
+//        System.out.println("NACK received " + msg + " acked " + latticeState.proposerStateMap.get(msg.getIteration()).getAcked() + " nacked " + latticeState.proposerStateMap.get(msg.getIteration()).getNacked());
         latticeState.nackReceived(msg);
     }
 

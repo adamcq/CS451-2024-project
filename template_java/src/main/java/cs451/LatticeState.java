@@ -16,7 +16,7 @@ public class LatticeState {
     LatticeRunConfig runConfig;
     AcceptorValuesHashMap acceptorValuesHashMap;
     Set<Integer> activeIterationsSet;
-    int maxActiveIterationsThreshold = 100; // TODO change to around 10-100
+    int maxActiveIterationsThreshold = 3; // TODO change to around 10-100
 
     public LatticeState(LatticeRunConfig runConfig, AcceptorValuesHashMap acceptorValuesHashMap) {
         proposerStateMap = new ConcurrentHashMap<>();
@@ -39,7 +39,7 @@ public class LatticeState {
     }
 
     public void addIteration(int iteration, ProposerState proposerState, AcceptorState acceptorState) {
-        System.out.println("STATE containsIteration (iter, proposerState, acceptorState): (" + iteration + " " + proposerStateMap.containsKey(iteration) + ", " + acceptorStateMap.containsKey(iteration) + ")");
+//        System.out.println("STATE containsIteration (iter, proposerState, acceptorState): (" + iteration + " " + proposerStateMap.containsKey(iteration) + ", " + acceptorStateMap.containsKey(iteration) + ")");
         if (!proposerStateMap.containsKey(iteration)) {
             proposerStateMap.put(iteration, proposerState);
             acceptorStateMap.put(iteration, acceptorState);
@@ -54,7 +54,7 @@ public class LatticeState {
     }
 
     public void removeIteration(int iteration) {
-        System.out.println("LatticeState removing iteration " + iteration);
+//        System.out.println("LatticeState removing iteration " + iteration);
 //        System.out.println("state: " + this);
         proposerStateMap.remove(iteration);
 //        acceptorStateMap.remove(iteration); // TODO this needs to be removed at some point for memory reasons - perhaps a bitset to keep track or use the vs/ds values to see if all are in accepted
@@ -99,7 +99,7 @@ public class LatticeState {
     }
 
     public boolean isMessageDelivered(LatticeMessage msg) { // TODO check if this is correct
-        System.out.println("isMessageDelivered DEBUG msg="+msg+" msg.getIteration()="+msg.getIteration()+" proposerStateMap.get(msg.getIteration())="+proposerStateMap.get(msg.getIteration()) +" (!proposerStateMap.get(msg.getIteration()).isActive())"+(!proposerStateMap.get(msg.getIteration()).isActive()));
+//        System.out.println("isMessageDelivered DEBUG msg="+msg+" msg.getIteration()="+msg.getIteration()+" proposerStateMap.get(msg.getIteration())="+proposerStateMap.get(msg.getIteration()) +" (!proposerStateMap.get(msg.getIteration()).isActive())"+(!proposerStateMap.get(msg.getIteration()).isActive()));
         return (!proposerStateMap.get(msg.getIteration()).isActive());
     }
 

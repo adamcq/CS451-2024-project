@@ -33,11 +33,11 @@ public class ProposerBEB {
             messages.put(iteration, new AbstractMap.SimpleEntry<>(msg, data));
         }
 
-        System.out.println("Updating beb (inserting to iteration) " + iteration +": ");
-        for (AbstractMap.SimpleEntry entry : messages.values()) {
-            System.out.println("\t" + entry.getKey());
-        }
-        System.out.println();
+//        System.out.println("Updating beb (inserting to iteration) " + iteration +": ");
+//        for (AbstractMap.SimpleEntry entry : messages.values()) {
+//            System.out.println("\t" + entry.getKey());
+//        }
+//        System.out.println();
     }
 
     public void startBroadcastLoop() {
@@ -49,7 +49,7 @@ public class ProposerBEB {
         try {
             System.out.println("Broadcast loop started");
             while (true) { // TODO instead check when sbd wants to update activepropnumber, update the set and restart loop - loop should internally iterate thru set of messsages for each ITERATION simultaneously
-                System.out.println("beb looop inside messagesCount=" + messages.size() + " timestampMillis=" + System.currentTimeMillis());
+//                System.out.println("beb looop inside messagesCount=" + messages.size() + " timestampMillis=" + System.currentTimeMillis());
 
                 List<Integer> toRemove = new ArrayList<>();
                 for (Map.Entry<Integer, AbstractMap.SimpleEntry<LatticeMessage, byte[]>> entry : messages.entrySet()) {
@@ -58,7 +58,7 @@ public class ProposerBEB {
 
                     // TODO i need to remove old messages state from memory at some point
                     if (latticeState.isMessageDelivered(msg)) {
-                        System.out.println("Removing message from BROADCAST. acked by: " );//+ latticeState.proposerStateMap.get(msg.getIteration()).getAcked() + " msg: " + msg);
+//                        System.out.println("Removing message from BROADCAST. acked by: " );//+ latticeState.proposerStateMap.get(msg.getIteration()).getAcked() + " msg: " + msg);
                         toRemove.add(msg.getIteration());
 
                         continue; // TODO verify if the break should be here
@@ -68,13 +68,13 @@ public class ProposerBEB {
                         if (dstId == latticeLink.hostId)
                             continue;
 
-                        System.out.println("(!latticeState.hasDstReceivedMessage(dstId, msg))=" + (!latticeState.hasDstReceivedMessage(dstId, msg)));
+//                        System.out.println("(!latticeState.hasDstReceivedMessage(dstId, msg))=" + (!latticeState.hasDstReceivedMessage(dstId, msg)));
                         if (!latticeState.hasDstReceivedMessage(dstId, msg)) {
                             debugReceivers.add(dstId);
                             latticeLink.send(entry.getValue().getValue(), dstId);
                         }
                     }
-                    System.out.println("Sending MSG " + msg + " to " + debugReceivers);
+//                    System.out.println("Sending MSG " + msg + " to " + debugReceivers);
                     debugReceivers.clear();
                 }
 
@@ -94,6 +94,7 @@ public class ProposerBEB {
         } catch (Exception e ) {
             System.out.println("EXCEPTION ERROR BEBLOOP " + e.getMessage() + e);
             e.printStackTrace();
+            System.out.println("EXCEPTION ERROR BEBLOOP2 " + e.getMessage() + e);
         }
 //        System.out.println("Broadcast loop interrupted");
     }
