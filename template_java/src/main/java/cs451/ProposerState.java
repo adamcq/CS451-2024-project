@@ -15,9 +15,10 @@ public class ProposerState {
     Set<Integer> proposedValue;
     Proposer proposer;
     LatticeRunConfig runConfig;
+    LatticeState latticeState;
     int iteration;
     // TODO implement hashmap {iteration: ProposerState} - remove after decided - control the logic in main based on the size (max 5 at the same time, etc.)
-    public ProposerState(Set<Integer> proposal,  LatticeRunConfig runConfig, Proposer proposer, int iteration) {
+    public ProposerState(Set<Integer> proposal,  LatticeRunConfig runConfig, Proposer proposer, int iteration, LatticeState latticeState) {
         proposedValue = proposal;
         active = true;
         activeProposalNumber++;
@@ -26,6 +27,7 @@ public class ProposerState {
         this.runConfig = runConfig;
         this.iteration = iteration;
         this.proposer = proposer;
+        this.latticeState = latticeState;
 
         this.nacked = new BitSet();
         this.acked = new BitSet();
@@ -138,13 +140,8 @@ public class ProposerState {
 
     private void decide(Set<Integer> value) {
         System.out.println("decide called");
-        StringBuilder valueToLog = new StringBuilder();
-        valueToLog.append(iteration).append(" d ");
-        for (int i : value) {
-            valueToLog.append(i);
-            valueToLog.append(" ");
-        }
-        runConfig.getLogBuffer().log(valueToLog.toString()); // TODO verify if last " " needs to be removed
+
+        latticeState.waitForDeliver(iteration, value);
     }
 
     public boolean isActive() {

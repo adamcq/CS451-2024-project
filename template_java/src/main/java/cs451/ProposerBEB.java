@@ -53,10 +53,11 @@ public class ProposerBEB {
                 Set<Integer> debugReceivers = new HashSet<>();
                 LatticeMessage msg = entry.getValue().getKey();
 
+                // TODO i need to remove old messages state from memory at some point
                 if (latticeState.isMessageDelivered(msg)) {
                     System.out.println("Removing message from BROADCAST. acked by: " + latticeState.proposerStateMap.get(msg.getIteration()).getAcked() + " msg: " + msg);
                     messages.remove(msg.getIteration());
-//                    latticeState.removeIteration(msg.getIteration()); // TODO debug - uncomment this
+//                    latticeState.removeIteration(msg.getIteration()); // TODO debug - uncomment this - but logic has to change
                     break; // TODO verify if the break should be here
                 }
 

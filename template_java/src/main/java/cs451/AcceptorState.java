@@ -8,9 +8,11 @@ public class AcceptorState {
     private Set<Integer> acceptedValue;
     private int[] maxSeenProposalNumberFrom;
     private Set<Integer> toNack;
-    public AcceptorState(Set<Integer> initialProposal) {
+    LatticeState latticeState;
+    public AcceptorState(Set<Integer> initialProposal, LatticeState latticeState) {
         this.acceptedValue = new HashSet<>();
         this.acceptedValue.addAll(initialProposal);
+        this.latticeState = latticeState;
 
         toNack = new HashSet<>();
         maxSeenProposalNumberFrom = new int[128];

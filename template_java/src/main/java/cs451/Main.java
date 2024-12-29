@@ -153,7 +153,7 @@ public class Main {
             int uniqueNumbersCount = Integer.parseInt(configValues[2]);
 
             LatticeRunConfig runConfig = new LatticeRunConfig(parser, numberOfIterations, maxProposalSize, uniqueNumbersCount);
-            LatticeState latticeState = new LatticeState();
+            LatticeState latticeState = new LatticeState(runConfig);
 
             LatticeLink latticeLink = new LatticeLink(runConfig, latticeState);
             ProposerBEB proposerBEB = new ProposerBEB(latticeLink, latticeState, runConfig);
@@ -177,11 +177,16 @@ public class Main {
                 System.out.println("Processing line " + (i + 1) + ": line=" + line + " initialProposal=" + initialProposal);
 
                 // init iteration classes
-                AcceptorState acceptorState = new AcceptorState(initialProposal);
-                ProposerState proposerState = new ProposerState(initialProposal, runConfig, proposer, i+1);
+                AcceptorState acceptorState = new AcceptorState(initialProposal, latticeState);
+                ProposerState proposerState = new ProposerState(initialProposal, runConfig, proposer, i+1, latticeState);
                 latticeState.addIteration(i+1, proposerState, acceptorState);
 
                 proposer.uponNewBroadcastTriggered(proposerState);
+
+//                while (latticeState.activeIterations >= 2) {
+//                    System.out.println("Active iterations = " + latticeState.activeIterations);
+//                    Thread.sleep(2);
+//                }
 
 
 //                LatticeLink latticeLink = new LatticeLink(runConfig, proposerState, acceptorState);

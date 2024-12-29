@@ -3,20 +3,23 @@ package cs451;
 import cs451.Message.LatticeMessage;
 import cs451.Message.Message;
 
-import java.util.AbstractMap;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public class LatticeState {
     Map<Integer, ProposerState> proposerStateMap;
     Map<Integer, AcceptorState> acceptorStateMap;
     int maxIteration = 0;
     int activeIterations = 0;
+    int nextToDeliver = 1;
+    Map<Integer, Set<Integer>> toDeliver; // TODO change to Map<Integer, BitSet>
+    LatticeRunConfig runConfig;
 
-    public LatticeState() {
+    public LatticeState(LatticeRunConfig runConfig) {
         proposerStateMap = new HashMap<>();
         acceptorStateMap = new HashMap<>();
+
+        toDeliver = new HashMap<>();
+        this.runConfig = runConfig;
     }
 
     @Override
@@ -85,5 +88,28 @@ public class LatticeState {
 
     public boolean isMessageDelivered(LatticeMessage msg) { // TODO check if this is correct
         return (!proposerStateMap.get(msg.getIteration()).isActive());
+    }
+
+    /* DELIVER MESSAGES */
+    public synchronized void waitForDeliver(int iteration, Set<Integer> messageSet) {
+        toDeliver.put(iteration, messageSet);
+        Set<Integer> toRemove = new HashSet<>();
+
+        while (toDeliver.containsKey(nextToDeliver)) {
+            StringBuilder valueToLog = new StringBuilder();
+//            valueToLog.append(nextToDeliver).append(" d ");
+            valueToLog.append("d ");
+            System.out.println("DECIDING toDeliver.size()="+toDeliver.size()+" iteration=" + nextToDeliver + " d " + nextToDeliver + " " + toDeliver.get(nextToDeliver));
+            for (int i : toDeliver.get(nextToDeliver)) {
+                valueToLog.append(i);
+                valueToLog.append(" ");
+            }
+            runConfig.getLogBuffer().log(valueToLog.toString());
+            toRemove.add(nextToDeliver);
+            nextToDeliver++;
+        }
+
+        for (int key : toRemove)
+            toDeliver.remove(key);
     }
 }
