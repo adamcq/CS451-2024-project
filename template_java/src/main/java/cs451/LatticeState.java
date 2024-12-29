@@ -4,6 +4,7 @@ import cs451.Message.LatticeMessage;
 import cs451.Message.Message;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class LatticeState {
     Map<Integer, ProposerState> proposerStateMap;
@@ -13,13 +14,18 @@ public class LatticeState {
     int nextToDeliver = 1;
     Map<Integer, Set<Integer>> toDeliver; // TODO change to Map<Integer, BitSet>
     LatticeRunConfig runConfig;
+    AcceptorValuesHashMap acceptorValuesHashMap;
+    Set<Integer> activeIterationsSet;
+    int maxActiveIterationsThreshold = 100; // TODO change to around 10-100
 
-    public LatticeState(LatticeRunConfig runConfig) {
-        proposerStateMap = new HashMap<>();
-        acceptorStateMap = new HashMap<>();
+    public LatticeState(LatticeRunConfig runConfig, AcceptorValuesHashMap acceptorValuesHashMap) {
+        proposerStateMap = new ConcurrentHashMap<>();
+        acceptorStateMap = new ConcurrentHashMap<>();
+        this.acceptorValuesHashMap = acceptorValuesHashMap; // should be at most 1000
 
         toDeliver = new HashMap<>();
         this.runConfig = runConfig;
+        this.activeIterationsSet = new HashSet<>();
     }
 
     @Override
@@ -39,15 +45,21 @@ public class LatticeState {
             acceptorStateMap.put(iteration, acceptorState);
             maxIteration++;
             activeIterations++;
+            activeIterationsSet.add(iteration);
+
+            // remove old stuff which should not be active TODO verify if it actually works
+            // TODO also maybe change to -10 instead of -1 to leave some buffer
+//            acceptorStateMap.remove(iteration - 2*maxActiveIterationsThreshold);
         }
     }
 
     public void removeIteration(int iteration) {
         System.out.println("LatticeState removing iteration " + iteration);
-        System.out.println("state: " + this);
+//        System.out.println("state: " + this);
         proposerStateMap.remove(iteration);
-        acceptorStateMap.remove(iteration); // TODO this needs to be removed at some point for memory reasons - perhaps a bitset to keep track or use the vs/ds values to see if all are in accepted
+//        acceptorStateMap.remove(iteration); // TODO this needs to be removed at some point for memory reasons - perhaps a bitset to keep track or use the vs/ds values to see if all are in accepted
         activeIterations--;
+        activeIterationsSet.remove(iteration);
     }
 
     public boolean iterationReached(int iteration) {
@@ -87,6 +99,7 @@ public class LatticeState {
     }
 
     public boolean isMessageDelivered(LatticeMessage msg) { // TODO check if this is correct
+        System.out.println("isMessageDelivered DEBUG msg="+msg+" msg.getIteration()="+msg.getIteration()+" proposerStateMap.get(msg.getIteration())="+proposerStateMap.get(msg.getIteration()) +" (!proposerStateMap.get(msg.getIteration()).isActive())"+(!proposerStateMap.get(msg.getIteration()).isActive()));
         return (!proposerStateMap.get(msg.getIteration()).isActive());
     }
 
@@ -111,5 +124,10 @@ public class LatticeState {
 
         for (int key : toRemove)
             toDeliver.remove(key);
+    }
+
+    /* ACCEPTOR HASH MAP */
+    public AcceptorValuesHashMap getAcceptorValuesHashMap() {
+        return acceptorValuesHashMap;
     }
 }

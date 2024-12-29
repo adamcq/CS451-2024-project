@@ -153,7 +153,8 @@ public class Main {
             int uniqueNumbersCount = Integer.parseInt(configValues[2]);
 
             LatticeRunConfig runConfig = new LatticeRunConfig(parser, numberOfIterations, maxProposalSize, uniqueNumbersCount);
-            LatticeState latticeState = new LatticeState(runConfig);
+            AcceptorValuesHashMap acceptorValuesHashMap = new AcceptorValuesHashMap(runConfig.getUniqueNumbersCount());
+            LatticeState latticeState = new LatticeState(runConfig, acceptorValuesHashMap);
 
             LatticeLink latticeLink = new LatticeLink(runConfig, latticeState);
             ProposerBEB proposerBEB = new ProposerBEB(latticeLink, latticeState, runConfig);
@@ -175,6 +176,9 @@ public class Main {
                     initialProposal.add(Integer.parseInt(numberString));
                 }
                 System.out.println("Processing line " + (i + 1) + ": line=" + line + " initialProposal=" + initialProposal);
+                for (int number : initialProposal)
+                    acceptorValuesHashMap.getOrAddHashIndex(number);
+                System.out.println("acceptorValuesHashMap="+acceptorValuesHashMap);
 
                 // init iteration classes
                 AcceptorState acceptorState = new AcceptorState(initialProposal, latticeState);
@@ -183,10 +187,11 @@ public class Main {
 
                 proposer.uponNewBroadcastTriggered(proposerState);
 
-//                while (latticeState.activeIterations >= 2) {
-//                    System.out.println("Active iterations = " + latticeState.activeIterations);
-//                    Thread.sleep(2);
-//                }
+                // TODO find what threshold performs best
+                while (latticeState.activeIterationsSet.contains(i+1 - latticeState.maxActiveIterationsThreshold + 1)) {
+                    System.out.println("Active iterations = " + latticeState.activeIterations);
+                    Thread.sleep(1);
+                }
 
 
 //                LatticeLink latticeLink = new LatticeLink(runConfig, proposerState, acceptorState);

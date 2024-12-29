@@ -33,7 +33,7 @@ public class LatticeLink {
 //    BitSet acked = new BitSet();
 //    int startSendFrom = 0;
     LatticeRunConfig runConfig;
-    int UDP_PACKET_SIZE = 4096;
+    int UDP_PACKET_SIZE = 8000;
     BlockingQueue<DatagramPacket> taskQueue;
     LatticeState latticeState;
 
@@ -131,9 +131,9 @@ public class LatticeLink {
     private void handleMessage(byte[] data) {
         LatticeMessage msg = LatticeMessage.deserialize(data);
         msg.setRelayId(runConfig.getProcessId());
-        System.out.println("handleMESSAGE !latticeState.iterationReached(msg.getIteration()) || latticeState.iterationComplete(msg.getIteration()) = " + (!latticeState.iterationReached(msg.getIteration())) + " " + latticeState.iterationComplete(msg.getIteration()) + " maxIterSeen=" + latticeState.maxIteration + " currentIter="+msg.getIteration());
+        System.out.println("handleMESSAGE !latticeState.iterationReached(msg.getIteration()) || latticeState.iterationComplete(msg.getIteration()) = " + (!latticeState.iterationReached(msg.getIteration())) + " " + latticeState.iterationComplete(msg.getIteration()) + " maxIterSeen=" + latticeState.maxIteration + " msgIter="+msg.getIteration());
 
-        if (!latticeState.iterationReached(msg.getIteration()) || latticeState.iterationComplete(msg.getIteration()))
+        if (!latticeState.iterationReached(msg.getIteration())) // TODO this was there before -> || latticeState.iterationComplete(msg.getIteration())
             return;
 
         // TODO if the first time you see the (iteration, senderId, proposalNumber) - store it in acceptor toNack
@@ -192,7 +192,7 @@ public class LatticeLink {
 
         try {
             sendAckSocket.send(ackPacket);
-            System.out.println("ACK sent " + msg + " acked " + latticeState.proposerStateMap.get(msg.getIteration()).getAcked() + " nacked " + latticeState.proposerStateMap.get(msg.getIteration()).getNacked());
+//            System.out.println("ACK sent " + msg + " acked " + latticeState.proposerStateMap.get(msg.getIteration()).getAcked() + " nacked " + latticeState.proposerStateMap.get(msg.getIteration()).getNacked());
             sentAcks++;
             sentCounter++;
         } catch (IOException e) {
@@ -209,7 +209,7 @@ public class LatticeLink {
 
         try {
             sendAckSocket.send(nackPacket);
-            System.out.println("NACK sent" + msg + " acked " + latticeState.proposerStateMap.get(msg.getIteration()).getAcked() + " nacked " + latticeState.proposerStateMap.get(msg.getIteration()).getNacked());
+//            System.out.println("NACK sent" + msg + " acked " + latticeState.proposerStateMap.get(msg.getIteration()).getAcked() + " nacked " + latticeState.proposerStateMap.get(msg.getIteration()).getNacked());
 
             sentNacks++;
             sentCounter++;

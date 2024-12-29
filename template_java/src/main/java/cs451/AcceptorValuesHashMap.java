@@ -1,5 +1,6 @@
 package cs451;
 
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.HashMap;
 import java.util.Map;
@@ -42,4 +43,13 @@ public class AcceptorValuesHashMap {
         return hashToNumber[hashIndex];
     }
 
+    @Override
+    public String toString() {
+        return "AcceptorValuesHashMap{" +
+                "globalHashMap=" + globalHashMap +
+                ", hashToNumber=" + Arrays.toString(hashToNumber) +
+                ", nextHashIndex=" + nextHashIndex +
+                ", maxHashSize=" + maxHashSize +
+                '}';
+    }
 }

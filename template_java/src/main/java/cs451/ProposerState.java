@@ -67,6 +67,7 @@ public class ProposerState {
             incrementActiveProposalNumber();
             resetNacked();
             resetAcked();
+            ackReceived(new LatticeMessage((byte) 1, runConfig.getProcessId(), runConfig.getProcessId(), activeProposalNumber, iteration, msg.getSetSize(), msg.getProposalValue()));
 //            System.out.println("br trird1");
             proposer.uponNewBroadcastTriggered(this);
 //            System.out.println("br trird2");
@@ -76,6 +77,7 @@ public class ProposerState {
     }
 
     public void nackReceived(LatticeMessage msg) {
+        System.out.println("msg.proposalNum="+msg.getProposalNumber()+" activePropNum="+activeProposalNumber+" acked="+acked+" nacked="+nacked+" ackCount="+ackCount+" nackCount="+nackCount+" iteration="+iteration);
         if (msg.getProposalNumber() != activeProposalNumber)
             return;
 
@@ -95,6 +97,7 @@ public class ProposerState {
             incrementActiveProposalNumber();
             resetNacked();
             resetAcked();
+            ackReceived(new LatticeMessage((byte) 1, runConfig.getProcessId(), runConfig.getProcessId(), activeProposalNumber, iteration, msg.getSetSize(), msg.getProposalValue()));
 //            System.out.println("br trigrd1");
             proposer.uponNewBroadcastTriggered(this);
 //            System.out.println("br trigrd2");
