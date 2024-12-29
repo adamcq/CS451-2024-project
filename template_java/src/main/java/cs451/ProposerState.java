@@ -33,8 +33,10 @@ public class ProposerState {
         this.acked = new BitSet();
         ackReceived(new LatticeMessage((byte) 1, runConfig.getProcessId(), runConfig.getProcessId(), 1, iteration, proposal.size(), proposal));
 
-        if (proposedValue.size() == runConfig.getUniqueNumbersCount())
+        if (proposedValue.size() == runConfig.getUniqueNumbersCount()) {
             decide(proposedValue);
+            setActive(false);
+        }
     }
 
 //    public void setProposer(Proposer proposer) {
@@ -115,8 +117,10 @@ public class ProposerState {
 
     public Set<Integer> updateProposalValue(Set<Integer> value) {
         proposedValue.addAll(value);
-        if (proposedValue.size() == runConfig.getUniqueNumbersCount())
+        if (proposedValue.size() == runConfig.getUniqueNumbersCount()) {
             decide(proposedValue);
+            setActive(false);
+        }
         return proposedValue;
     }
 
