@@ -115,7 +115,7 @@ public class LatticeState {
         while (toDeliver.containsKey(nextToDeliver)) {
             StringBuilder valueToLog = new StringBuilder();
 //            valueToLog.append(nextToDeliver).append(" d ");
-            valueToLog.append("d ");
+//            valueToLog.append("d ");
 //            System.out.println("DECIDING toDeliver.size()="+toDeliver.size()+" iteration=" + nextToDeliver + " d " + nextToDeliver + " " + toDeliver.get(nextToDeliver));
             for (int i : toDeliver.get(nextToDeliver)) {
                 valueToLog.append(i);
