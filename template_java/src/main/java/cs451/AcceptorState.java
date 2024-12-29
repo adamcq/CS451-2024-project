@@ -18,8 +18,9 @@ public class AcceptorState {
         maxSeenProposalNumberFrom = new int[128];
     }
 
-    public boolean containsProposedValue(Set<Integer> proposedValue) {
-        return acceptedValue.containsAll(proposedValue);
+    public boolean isSubsetOfProposedValue(Set<Integer> proposedValue) {
+        return proposedValue.containsAll(acceptedValue);
+//        return acceptedValue.containsAll(proposedValue);
     }
 
     public void addToAccepted(Set<Integer> proposedValue) {

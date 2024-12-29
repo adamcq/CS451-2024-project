@@ -77,7 +77,7 @@ public class LatticeState {
 
     /* ACCEPTOR STATE */
     public boolean containsProposedValue(LatticeMessage msg) { // TODO actually add the iteration if it's not active yet
-        return acceptorStateMap.get(msg.getIteration()).containsProposedValue(msg.getProposalValue());
+        return acceptorStateMap.get(msg.getIteration()).isSubsetOfProposedValue(msg.getProposalValue());
     }
     public void addToAccepted(LatticeMessage msg) {
         acceptorStateMap.get(msg.getIteration()).addToAccepted(msg.getProposalValue());

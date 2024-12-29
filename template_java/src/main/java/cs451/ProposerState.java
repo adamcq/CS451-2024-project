@@ -57,7 +57,7 @@ public class ProposerState {
         // UPON logic
         if (ackCount > runConfig.getNumberOfHosts() / 2 && active) {
 //            System.exit(1);
-//            System.out.println("DECIDING " + msg + " ACKED=" + acked + " NACKED=" + nacked + "ackedCount="+ackCount+" nackCount="+nackCount);
+//            System.out.println("DECIDING proposedValue=" + proposedValue +" iteration="+iteration+" activeProposalNumber="+activeProposalNumber+" ACKED=" + acked + " NACKED=" + nacked + " ackedCount="+ackCount+" nackCount="+nackCount);
             decide(proposedValue); // TODO before i had msg.getProposalValue() and that was the ERROR!
             setActive(false);
         }
@@ -85,9 +85,9 @@ public class ProposerState {
         if (acked.get(msg.getRelayId() - 1) || nacked.get(msg.getRelayId() - 1) || iteration != msg.getIteration())
             return;
 
-//        System.out.println("TODO REMOVE THE LINE BELOW " + proposedValue + " msg=" + msg);
+//        System.out.println("BEFORE NACK RECEIVED " + proposedValue + " iteration="+iteration+" activeProposalNumber="+activeProposalNumber+ " msg=" + msg);
         Set<Integer> newProposalValue = updateProposalValue(msg.getProposalValue());
-//        System.out.println("TODO REMOVE THE LINE ABOVE " + proposedValue);
+//        System.out.println("AFTER NACK RECEIVED " + proposedValue + " iteration="+iteration+" activeProposalNumber="+activeProposalNumber);
 //        Set<Integer> newProposalValue = updateProposalValue(msg.getProposalValue());
         addNacked(msg.getRelayId());
 
